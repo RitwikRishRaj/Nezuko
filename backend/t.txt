@@ -1,18 +1,61 @@
-proposal for tree structure some part only hehe
- backend/                    
-│  ├─ controllers/             # Request handlers
-│  │  ├─ battleController.js
-│  │  ├─ tournamentController.js
-│  │  └─ userController.js
-│  ├─ routes/                  # routes (are using express)
-│  │  ├─ battleRoutes.js
-│  │  ├─ tournamentRoutes.js
-│  │  └─ userRoutes.js
-│  ├─ services/                # logic
-│  │  ├─ battleService.js
-│  │  ├─ tournamentService.js
-│  │  └─ scoringService.js
-│  ├─ models/                  # Supabase queries / DB helpers
-│  │  ├─ battleModel.js
-│  │  ├─ tournamentModel.js
-│  │  └─ userModel.js
+backend/
+│
+├── gateway/                        # API Gateway / Reverse proxy (e.g., Express, Nginx, or GraphQL gateway)
+│   ├── src/
+│   │   ├── routes/
+│   │   ├── middleware/
+│   │   ├── utils/
+│   │   └── index.js
+│   └── package.json
+│
+├── services/
+│   ├── user-service/                # Handles users, profiles, leaderboard
+│   │   ├── src/
+│   │   │   ├── controllers/
+│   │   │   ├── models/
+│   │   │   ├── routes/
+│   │   │   ├── services/
+│   │   │   └── index.js
+│   │   └── package.json
+│   │
+│   ├── battle-service/              # Manages battles
+│   │   ├── src/
+│   │   │   ├── controllers/
+│   │   │   ├── models/
+│   │   │   ├── routes/
+│   │   │   └── index.js
+│   │   └── package.json
+│   │
+│   ├── team-service/                # Teams and members
+│   │   ├── src/
+│   │   ├── package.json
+│   │
+│   ├── question-service/            # Problem fetching
+│   │   ├── src/
+│   │   ├── package.json
+│   │
+│   ├── submission-service/          # Submissions and monitoring
+│   │   ├── src/
+│   │   ├── package.json
+│   │
+│   ├── scoring-service/             # Scoring and rating
+│   │   ├── src/
+│   │   ├── package.json
+│   │
+│   ├── history-service/             # User/team/battle history
+│   │   ├── src/
+│   │   ├── package.json
+│   │
+│   └── notification-service/        # Notifications
+│       ├── src/
+│       ├── package.json
+│
+├── shared/                          # Shared libraries
+│   ├── utils/                       # Common utilities
+│   ├── constants/                   # Enums, config constants
+│   ├── middleware/                  # Shared middlewares
+│   └── db/                          # Shared DB connection logic (if centralized)
+│
+├── docker-compose.yml               # For orchestrating microservices locally
+├── package.json                     # Root dependencies / scripts
+└── README.md
