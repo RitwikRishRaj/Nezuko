@@ -1,0 +1,18 @@
+proposal for tree structure some part only hehe
+ backend/                    
+│  ├─ controllers/             # Request handlers
+│  │  ├─ battleController.js
+│  │  ├─ tournamentController.js
+│  │  └─ userController.js
+│  ├─ routes/                  # routes (are using express)
+│  │  ├─ battleRoutes.js
+│  │  ├─ tournamentRoutes.js
+│  │  └─ userRoutes.js
+│  ├─ services/                # logic
+│  │  ├─ battleService.js
+│  │  ├─ tournamentService.js
+│  │  └─ scoringService.js
+│  ├─ models/                  # Supabase queries / DB helpers
+│  │  ├─ battleModel.js
+│  │  ├─ tournamentModel.js
+│  │  └─ userModel.js
