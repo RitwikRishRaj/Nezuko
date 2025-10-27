@@ -1,43 +1,109 @@
-'use client';
+//homepage
+"use client";
+import {
+  Navbar,
+  NavBody,
+  NavItems,
+  MobileNav,
+  NavbarLogo,
+  NavbarButton,
+  MobileNavHeader,
+  MobileNavToggle,
+  MobileNavMenu,
+} from "@/components/ui/resizable-navbar";
+import { Footer } from '@/components/footer-section';
+import { cn } from "@/lib/utils";
+import { InteractiveHoverButton } from "@/components/ui/interactive-hover-button";
+import { useState } from "react";
 
-import { useUser } from '@clerk/nextjs';
+export default function HomePage() {
+  const navItems = [
+    {
+      name: "Features",
+      link: "#features",
+    },
+    {
+      name: "Pricing",
+      link: "#pricing",
+    },
+    {
+      name: "Contact",
+      link: "#contact",
+    },
+  ];
 
-export default function Home() {
-  const { isLoaded, isSignedIn, user } = useUser();
-
-  if (!isLoaded) {
-    return <div>Loading...</div>;
-  }
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   return (
-    <main className="min-h-screen p-8">
-      <div className="max-w-4xl mx-auto">
-        <h1 className="text-3xl font-bold mb-6">Welcome to Nezuko</h1>
-        {isSignedIn && user ? (
-          <div className="space-y-4">
-            <p className="text-lg">Hello, {user.firstName}!</p>
-            <p>Your account is synced with Supabase.</p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <p className="text-lg">Please sign in to continue</p>
-            <div className="flex space-x-4">
-              <a
-                href="/sign-in"
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-              >
-                Sign In
-              </a>
-              <a
-                href="/sign-up"
-                className="px-4 py-2 border border-gray-300 rounded hover:bg-gray-100 transition-colors"
-              >
-                Sign Up
-              </a>
+    <div className="min-h-screen bg-black text-white">
+      <Navbar>
+        {/* Desktop Navigation */}
+        <NavBody>
+          <NavbarLogo />
+          <NavItems items={navItems} />
+          <div className="flex items-center gap-4">
+            <div className="relative">
+              <InteractiveHoverButton />
             </div>
+           
           </div>
-        )}
+        </NavBody>
+
+        {/* Mobile Navigation */}
+        <MobileNav>
+          <MobileNavHeader>
+            <NavbarLogo />
+            <MobileNavToggle
+              isOpen={isMobileMenuOpen}
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            />
+          </MobileNavHeader>
+
+          <MobileNavMenu
+            isOpen={isMobileMenuOpen}
+            onClose={() => setIsMobileMenuOpen(false)}
+          >
+            {navItems.map((item, idx) => (
+              <a
+                key={`mobile-link-${idx}`}
+                href={item.link}
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="relative text-white hover:text-gray-300"
+              >
+                <span className="block py-2">{item.name}</span>
+              </a>
+            ))}
+            <div className="mt-4 flex w-full flex-col gap-4">
+              <NavbarButton
+                onClick={() => setIsMobileMenuOpen(false)}
+                variant="primary"
+                className="w-full"
+              >
+                Login
+              </NavbarButton>
+              <NavbarButton
+                onClick={() => setIsMobileMenuOpen(false)}
+                variant="secondary"
+                className="w-full"
+              >
+                Book a call
+              </NavbarButton>
+            </div>
+          </MobileNavMenu>
+        </MobileNav>
+      </Navbar>
+
+      {/* Main Content */}
+      <div className="flex-1">
+        <div className="container mx-auto flex min-h-[calc(100vh-4rem)] items-center justify-center px-4">
+          <h1 className="text-center text-5xl font-bold md:text-6xl">
+            Welcome to Our Platform
+          </h1>
+        </div>
       </div>
-    </main>
+
+      {/* Footer */}
+      <Footer />
+    </div>
   );
 }

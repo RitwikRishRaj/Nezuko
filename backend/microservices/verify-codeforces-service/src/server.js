@@ -4,7 +4,7 @@ import axios from "axios";
 const app = express();
 app.use(express.json());
 
-// Fixed problem for verification
+// Verification configuration
 const VERIFICATION_PROBLEM = { contestId: 1000, index: "A" }; // Problem 1000A
 
 // POST /verify-codeforces
@@ -54,5 +54,5 @@ app.post("/verify-codeforces", async (req, res) => {
   }
 });
 
-const PORT = 3000;
+const PORT = 3001;
 app.listen(PORT, () => console.log(`Verification service running on port ${PORT}`));
