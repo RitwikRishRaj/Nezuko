@@ -15,6 +15,7 @@ import { Footer } from '@/components/footer-section';
 import { cn } from "@/lib/utils";
 import { InteractiveHoverButton } from "@/components/ui/interactive-hover-button";
 import { useState } from "react";
+import MagicBento from "@/components/MagicBento";
 
 export default function HomePage() {
   const navItems = [
@@ -94,11 +95,25 @@ export default function HomePage() {
       </Navbar>
 
       {/* Main Content */}
-      <div className="flex-1">
-        <div className="container mx-auto flex min-h-[calc(100vh-4rem)] items-center justify-center px-4">
-          <h1 className="text-center text-5xl font-bold md:text-6xl">
+      <div className="flex-1 py-12">
+        <div className="container mx-auto flex min-h-[calc(100vh-4rem)] flex-col items-center justify-center px-4">
+          <h1 className="mb-12 text-center text-5xl font-bold md:text-6xl">
             Welcome to Our Platform
           </h1>
+          <div className="w-full max-w-4xl px-4">
+            <MagicBento 
+              textAutoHide={true}
+              enableStars={true}
+              enableSpotlight={true}
+              enableBorderGlow={true}
+              enableTilt={true}
+              enableMagnetism={true}
+              clickEffect={true}
+              spotlightRadius={300}
+              particleCount={12}
+              glowColor="132, 0, 255"
+            />
+          </div>
         </div>
       </div>
 

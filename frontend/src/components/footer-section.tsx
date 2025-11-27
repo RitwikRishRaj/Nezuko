@@ -62,7 +62,7 @@ export function Footer() {
 			<div className="grid w-full gap-8 xl:grid-cols-3 xl:gap-8">
 				<AnimatedContainer className="space-y-4">
 					<FrameIcon className="size-8" />
-					<p className="text-muted-foreground mt-8 text-sm md:mt-0">
+					<p className="text-white mt-8 text-sm md:mt-0">
 						© {new Date().getFullYear()} Asme. All rights reserved.
 					</p>
 				</AnimatedContainer>
@@ -71,13 +71,13 @@ export function Footer() {
 					{footerLinks.map((section, index) => (
 						<AnimatedContainer key={section.label} delay={0.1 + index * 0.1}>
 							<div className="mb-10 md:mb-0">
-								<h3 className="text-xs">{section.label}</h3>
-								<ul className="text-muted-foreground mt-4 space-y-2 text-sm">
+								<h3 className="text-white text-xs">{section.label}</h3>
+								<ul className="text-white mt-4 space-y-2 text-sm">
 									{section.links.map((link) => (
 										<li key={link.title}>
 											<a
 												href={link.href}
-												className="hover:text-foreground inline-flex items-center transition-all duration-300"
+												className="text-white hover:text-gray-300 inline-flex items-center transition-all duration-300"
 											>
 												{link.icon && <link.icon className="me-1 size-4" />}
 												{link.title}
