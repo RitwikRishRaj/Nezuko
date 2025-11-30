@@ -62,13 +62,25 @@ export default function VerifyPage() {
       setVerificationStatus('success');
       toast.success('Codeforces handle verified successfully!');
       
-      // Here you would typically update the user's profile in your database
-      // await updateUserProfile(handle.trim());
+      // Save user to database
+      const createUserResponse = await fetch('/api/user/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          codeforcesHandle: handle.trim() 
+        }),
+      });
+
+      if (!createUserResponse.ok) {
+        const errorData = await createUserResponse.json();
+        console.error('Failed to create user:', errorData);
+        throw new Error('Failed to save user profile');
+      }
       
-      // Redirect to dashboard after 2 seconds
-      setTimeout(() => {
-        window.location.href = '/dashboard';
-      }, 2000);
+      // Redirect to dashboard immediately after user is created
+      window.location.href = '/dashboard';
     } catch (error: unknown) {
       console.error('Verification error:', error);
       setVerificationStatus('error');

@@ -5,6 +5,7 @@ import { Sidebar, SidebarBody, SidebarLink } from "@/components/ui/sidebar";
 import { useState } from 'react';
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
+import Image from 'next/image';
 import {
   IconSettings,
   IconUsers,
@@ -113,8 +114,15 @@ const Logo = ({ open }: { open: boolean }) => {
         open ? "space-x-2 justify-start" : "justify-center"
       )}
     >
-      <div className="h-8 w-8 flex-shrink-0 rounded-tl-lg rounded-tr-sm rounded-br-lg rounded-bl-sm bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center min-w-[32px] min-h-[32px]">
-        <span className="text-white font-bold text-sm">A</span>
+      <div className="flex-shrink-0">
+        <Image
+          src="/algogym_logo.svg"
+          alt="Algogym Logo"
+          width={open ? 120 : 32}
+          height={open ? 40 : 32}
+          className={open ? "h-8 w-auto" : "h-8 w-8"}
+          priority
+        />
       </div>
       <AnimatePresence mode="wait">
         {open && (
@@ -159,9 +167,13 @@ const LogoIcon = () => {
       href="/dashboard"
       className="relative z-20 flex items-center justify-center py-4 min-w-0 flex-nowrap"
     >
-      <div className="h-8 w-8 flex-shrink-0 rounded-tl-lg rounded-tr-sm rounded-br-lg rounded-bl-sm bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center min-w-[32px] min-h-[32px]">
-        <span className="text-white font-bold text-sm">A</span>
-      </div>
+      <Image
+        src="/algogym_logo.svg"
+        alt="AlgoGym"
+        width={32}
+        height={32}
+        className="h-8 w-8"
+      />
     </a>
   );
 };
@@ -185,7 +197,7 @@ export default function DashboardLayout({
           <SidebarBody 
             className="justify-between gap-10 shadow-lg h-full rounded-r-xl"
             style={{
-              background: "linear-gradient(to bottom, #1b1b32 0%, #232c66 50%, #2a3a94 100%)"
+              background: "linear-gradient(to bottom, #000000 0%, #1a0033 50%, #6b21a8 100%)"
             }}
           >
             <div className="flex flex-1 flex-col overflow-x-hidden overflow-y-auto">

@@ -2,7 +2,8 @@
 import React from 'react';
 import type { ComponentProps, ReactNode } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
-import { FacebookIcon, FrameIcon, InstagramIcon, LinkedinIcon, YoutubeIcon } from 'lucide-react';
+import { FacebookIcon, InstagramIcon, LinkedinIcon, YoutubeIcon } from 'lucide-react';
+import Image from 'next/image';
 
 interface FooterLink {
 	title: string;
@@ -61,10 +62,19 @@ export function Footer() {
 
 			<div className="grid w-full gap-8 xl:grid-cols-3 xl:gap-8">
 				<AnimatedContainer className="space-y-4">
-					<FrameIcon className="size-8" />
-					<p className="text-white mt-8 text-sm md:mt-0">
-						© {new Date().getFullYear()} Asme. All rights reserved.
-					</p>
+					<div className="flex flex-col items-start gap-4">
+						<Image
+							src="/algogym_logo.svg"
+							alt="Algogym Logo"
+							width={120}
+							height={40}
+							className="h-10 w-auto"
+							style={{ background: 'transparent' }}
+						/>
+						<p className="text-white text-sm">
+							{new Date().getFullYear()} Algogym. All rights reserved.
+						</p>
+					</div>
 				</AnimatedContainer>
 
 				<div className="mt-10 grid grid-cols-2 gap-8 md:grid-cols-4 xl:col-span-2 xl:mt-0">
