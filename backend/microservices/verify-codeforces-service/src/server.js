@@ -37,11 +37,26 @@ app.post("/verify-codeforces", async (req, res) => {
     );
 
     if (match) {
+      // Fetch user info to get rating
+      let rating = null;
+      try {
+        const userInfoResponse = await axios.get(
+          `https://codeforces.com/api/user.info?handles=${handle}`
+        );
+        if (userInfoResponse.data.status === "OK" && userInfoResponse.data.result.length > 0) {
+          rating = userInfoResponse.data.result[0].rating || null;
+        }
+      } catch (ratingError) {
+        console.error("Failed to fetch rating:", ratingError.message);
+        // Continue without rating if fetch fails
+      }
+
       return res.json({
         success: true,
         message: `Codeforces account verified via problem ${VERIFICATION_PROBLEM.contestId}${VERIFICATION_PROBLEM.index}`,
         submissionId: match.id,
         submissionTime: match.creationTimeSeconds,
+        rating: rating,
       });
     } else {
       return res.json({

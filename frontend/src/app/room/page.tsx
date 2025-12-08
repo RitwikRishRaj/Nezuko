@@ -1,9 +1,12 @@
 "use client"
 
-import React, { useState, useMemo } from "react"
-import { IceCream, Puzzle } from "lucide-react"
+import React, { useState, useMemo, useEffect } from "react"
+import { UserPlus } from "lucide-react"
+import { motion, AnimatePresence } from "framer-motion"
+import { useSearchParams } from "next/navigation"
 import { HoverButton } from "@/components/ui/hover-button"
 import { Badge } from "@/components/ui/badge"
+import { createClient } from '@supabase/supabase-js'
 import AnimatedNumberCounter from "@/components/count-down-numbers"
 import { AnimatedCounter } from "@/components/ui/animated-counter"
 import GlassRadioGroup from "@/components/glass-radio-group"
@@ -12,6 +15,8 @@ import ToggleSwitch from "@/components/toggle-switch"
 import RatingRangeSlider from "@/components/RatingRangeSlider"
 import LinkEditor from "@/components/link-editor"
 import AnimatedNumberCountdown from "@/components/countdown-number"
+import { useUser } from "@clerk/nextjs"
+import { toast } from "sonner"
 
 type CompetitionType = 'icpc' | 'ioi' | 'long';
 
@@ -61,11 +66,542 @@ const AVAILABLE_TAGS: Tag[] = [
 
 
 export default function RoomPage() {
+  const { user } = useUser();
+  const searchParams = useSearchParams();
+  
+  // Get or generate room ID
+  const [roomId] = useState(() => {
+    const urlRoomId = searchParams.get('id');
+    return urlRoomId || Math.random().toString(36).substring(7);
+  });
+  
+  // Get room mode (1v1 or team-vs-team)
+  const [roomMode] = useState(() => {
+    return searchParams.get('mode') || 'team-vs-team';
+  });
+  
+  // Track if current user created this room (stored in sessionStorage)
+  const [isRoomCreatorBySession, setIsRoomCreatorBySession] = useState(false);
+  
+  useEffect(() => {
+    // Only run on client side
+    const urlRoomId = searchParams.get('id');
+    if (!urlRoomId) {
+      // New room being created, current user is creator
+      sessionStorage.setItem(`room_creator_${roomId}`, 'true');
+      setIsRoomCreatorBySession(true);
+    } else {
+      // Check if this user created this room
+      const isCreator = sessionStorage.getItem(`room_creator_${urlRoomId}`) === 'true';
+      setIsRoomCreatorBySession(isCreator);
+    }
+  }, [roomId, searchParams]);
+  
   const [minutes, setMinutes] = useState(1); // Time in minutes
   const [competitionType, setCompetitionType] = useState<CompetitionType>('icpc');
   const [selectedTags, setSelectedTags] = useState<Tag[]>([]);
   const [isRandom, setIsRandom] = useState(false);
   const [showProblemLinks, setShowProblemLinks] = useState(true);
+  const [isRoomCreator, setIsRoomCreator] = useState(true);
+  const [roomCreatorInfo, setRoomCreatorInfo] = useState<{
+    clerk_id: string;
+    codeforces_handle: string;
+  } | null>(null);
+  
+  // Invite system state
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [activeSlot, setActiveSlot] = useState<{type: 'host' | 'opponent', index: number} | null>(null);
+  const [invitedUsers, setInvitedUsers] = useState<{
+    host2: any | null;
+    host3: any | null;
+    opponent1: any | null;
+    opponent2: any | null;
+    opponent3: any | null;
+  }>({
+    host2: null,
+    host3: null,
+    opponent1: null,
+    opponent2: null,
+    opponent3: null,
+  });
+  
+  // Track if current user was in a slot (to detect kicks)
+  const [currentUserSlot, setCurrentUserSlot] = useState<string | null>(null);
+  const isInitialLoadRef = React.useRef(true);
+
+  // Load room state on mount and subscribe to realtime updates
+  useEffect(() => {
+    // Update URL with room ID if not present
+    if (!searchParams.get('id')) {
+      window.history.replaceState(null, '', `/room?id=${roomId}`);
+    }
+    
+    const loadRoomState = async () => {
+      if (!user) {
+        console.log('No user, skipping room state load');
+        return;
+      }
+      
+      console.log('🔄 Loading room state for room:', roomId, 'at', new Date().toISOString());
+      
+      try {
+        // Check if there are accepted invites for this room
+        const response = await fetch(`/api/room/state?roomId=${roomId}`);
+        if (response.ok) {
+          const data = await response.json();
+          console.log('📦 Room state response:', {
+            totalInvites: data.invites?.length,
+            acceptedInvites: data.invites?.filter((i: any) => i.status === 'accepted').length,
+            myInvite: data.invites?.find((i: any) => i.invited_clerk_id === user.id)
+          });
+          
+          // Get room creator info from invites
+          let creatorClerkId = null;
+          if (data.invites?.length > 0) {
+            creatorClerkId = data.invites[0]?.inviter_clerk_id;
+          }
+          
+          // Check if current user is the creator (use session storage as primary source)
+          const isCreator = isRoomCreatorBySession || creatorClerkId === user.id;
+          setIsRoomCreator(isCreator);
+          
+          // Fetch creator's info if we don't have it yet
+          if (creatorClerkId && !roomCreatorInfo) {
+            try {
+              const creatorResponse = await fetch(`/api/user/details?clerkId=${creatorClerkId}`);
+              if (creatorResponse.ok) {
+                const creatorData = await creatorResponse.json();
+                setRoomCreatorInfo({
+                  clerk_id: creatorClerkId,
+                  codeforces_handle: creatorData.codeforces_handle || 'Unknown'
+                });
+              }
+            } catch (error) {
+              console.error('Error fetching creator info:', error);
+            }
+          }
+          
+          console.log('Room state check:', {
+            userId: user.id,
+            creatorClerkId,
+            isCreator,
+            invites: data.invites
+          });
+          
+          // Load accepted invites
+          const acceptedInvites = data.invites?.filter((inv: any) => inv.status === 'accepted') || [];
+          console.log('All invites for room:', data.invites);
+          console.log('Accepted invites:', acceptedInvites);
+          console.log('Looking for user:', user.id);
+          
+          const newInvitedUsers: any = {
+            host2: null,
+            host3: null,
+            opponent1: null,
+            opponent2: null,
+            opponent3: null,
+          };
+          
+          // Fetch user details for each accepted invite
+          let foundCurrentUserSlot: string | null = null;
+          
+          for (const inv of acceptedInvites) {
+            try {
+              const userResponse = await fetch(`/api/user/details?clerkId=${inv.invited_clerk_id}`);
+              if (userResponse.ok) {
+                const userData = await userResponse.json();
+                newInvitedUsers[inv.slot] = {
+                  clerk_id: inv.invited_clerk_id,
+                  codeforces_handle: userData.codeforces_handle || 'Unknown'
+                };
+                
+                // Track if current user is in a slot
+                if (inv.invited_clerk_id === user.id) {
+                  foundCurrentUserSlot = inv.slot;
+                }
+              }
+            } catch (error) {
+              console.error('Error fetching user details:', error);
+            }
+          }
+          
+          // Detect if current user was kicked BEFORE updating state
+          const timestamp = new Date().toISOString();
+          console.log(`\n=== Kick Detection [${timestamp}] ===`);
+          console.log('Is initial load:', isInitialLoadRef.current);
+          console.log('Current user ID:', user.id);
+          console.log('Is creator (from API):', isCreator);
+          console.log('Is creator (from session):', isRoomCreatorBySession);
+          console.log('Previous slot (before update):', currentUserSlot);
+          console.log('Current slot (from API):', foundCurrentUserSlot);
+          console.log('Accepted invites count:', acceptedInvites.length);
+          console.log('All accepted invites:', acceptedInvites.map((inv: any) => ({
+            slot: inv.slot,
+            invited_clerk_id: inv.invited_clerk_id,
+            isCurrentUser: inv.invited_clerk_id === user.id
+          })));
+          
+          // SIMPLE KICK DETECTION: Am I in the accepted invites list?
+          const myAcceptedInvite = acceptedInvites.find((inv: any) => inv.invited_clerk_id === user.id);
+          const hasInvites = data.invites && data.invites.length > 0;
+          
+          console.log('👤 Kick check:', {
+            isInitialLoad: isInitialLoadRef.current,
+            isCreator: isCreator,
+            hasAcceptedInvite: !!myAcceptedInvite,
+            myInviteSlot: myAcceptedInvite?.slot || 'none',
+            totalInvites: data.invites?.length,
+            acceptedInvitesCount: acceptedInvites.length
+          });
+          
+          // If I'm not creator and I don't have an accepted invite, I shouldn't be here
+          // Check this ALWAYS, not just after initial load
+          if (!isCreator && !myAcceptedInvite && hasInvites) {
+            console.log('🚨🚨🚨 NOT AUTHORIZED! Not in accepted invites list');
+            console.log('Redirecting in 1.5 seconds...');
+            
+            toast.error('You have been removed from the room', {
+              description: 'Redirecting to dashboard...',
+              duration: 1500
+            });
+            
+            setTimeout(() => {
+              console.log('Executing redirect now...');
+              window.location.href = '/dashboard';
+            }, 1500);
+            
+            return;
+          }
+          
+          // Mark initial load as complete after first poll
+          if (isInitialLoadRef.current) {
+            isInitialLoadRef.current = false;
+            console.log('✅ Initial load complete, kick detection will be active on next poll');
+            console.log('📍 Setting currentUserSlot to:', foundCurrentUserSlot);
+            
+            // SPECIAL CHECK: If user joined a room but has no slot and is not creator, redirect
+            if (!foundCurrentUserSlot && !isCreator && data.invites?.length > 0) {
+              console.log('⚠️ User has no slot in this room and is not creator - redirecting');
+              toast.error('You are not part of this room', {
+                description: 'Redirecting to dashboard...',
+                duration: 2000
+              });
+              setTimeout(() => {
+                window.location.href = '/dashboard';
+              }, 2000);
+              return;
+            }
+          }
+          
+          // Update the state
+          console.log('📝 Updating state - currentUserSlot:', foundCurrentUserSlot);
+          setCurrentUserSlot(foundCurrentUserSlot);
+          setInvitedUsers(newInvitedUsers);
+        }
+      } catch (error) {
+        console.error('Error loading room state:', error);
+      }
+    };
+    
+    // Load initially
+    loadRoomState();
+    
+    // Set up Supabase Realtime subscription - NO POLLING
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
+    
+    console.log('🔴 Setting up realtime subscription for room:', roomId);
+    
+    const channel = supabase
+      .channel(`room_${roomId}_${Date.now()}`) // Unique channel name
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'room_invites'
+          // Removed filter - listen to ALL deletes
+        },
+        (payload) => {
+          console.log('🔴🔴🔴 REALTIME DELETE EVENT:', payload);
+          console.log('Deleted record:', payload.old);
+          console.log('Deleted room_id:', payload.old?.room_id);
+          console.log('Current room_id:', roomId);
+          
+          // Check if this delete is for our room
+          if (payload.old && payload.old.room_id === roomId) {
+            console.log('✅ Delete is for our room');
+            
+            // Check if the deleted invite was for current user
+            if (payload.old.invited_clerk_id === user?.id) {
+              console.log('🚨 MY INVITE WAS DELETED! I was kicked!');
+              
+              toast.error('You have been removed from the room', {
+                description: 'Redirecting to dashboard...',
+                duration: 1500
+              });
+              
+              setTimeout(() => {
+                window.location.href = '/dashboard';
+              }, 1500);
+            } else {
+              // Someone else was kicked, just reload state
+              console.log('Someone else was kicked, reloading state...');
+              loadRoomState();
+            }
+          } else {
+            console.log('❌ Delete is for a different room, ignoring');
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'room_invites',
+          filter: `room_id=eq.${roomId}`
+        },
+        (payload) => {
+          console.log('🔴 REALTIME UPDATE EVENT:', payload);
+          loadRoomState();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'room_invites',
+          filter: `room_id=eq.${roomId}`
+        },
+        (payload) => {
+          console.log('🔴 REALTIME INSERT EVENT:', payload);
+          loadRoomState();
+        }
+      )
+      .subscribe((status) => {
+        console.log('🔴 Realtime subscription status:', status);
+        if (status === 'SUBSCRIBED') {
+          console.log('✅ Realtime SUBSCRIBED successfully');
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('❌ Realtime CHANNEL_ERROR');
+        } else if (status === 'TIMED_OUT') {
+          console.error('❌ Realtime TIMED_OUT');
+        }
+      });
+    
+    return () => {
+      console.log('🔴 Cleaning up realtime subscription');
+      supabase.removeChannel(channel);
+    };
+  }, [user, roomId, searchParams]);
+  
+  // Search users by Codeforces handle with debounce
+  const handleSearch = React.useCallback(
+    async (query: string) => {
+      setSearchQuery(query);
+      
+      if (query.trim().length < 2) {
+        setSearchResults([]);
+        return;
+      }
+      
+      setIsSearching(true);
+      console.log('Searching for:', query);
+      
+      try {
+        const url = `/api/user/search?handle=${encodeURIComponent(query.trim())}`;
+        console.log('Fetching:', url);
+        
+        const response = await fetch(url);
+        console.log('Response status:', response.status, response.statusText);
+        
+        // Check if response is JSON
+        const contentType = response.headers.get('content-type');
+        console.log('Content-Type:', contentType);
+        
+        if (!contentType || !contentType.includes('application/json')) {
+          const text = await response.text();
+          console.error('Non-JSON response:', text);
+          toast.error('Server returned invalid response');
+          setSearchResults([]);
+          return;
+        }
+        
+        const data = await response.json();
+        console.log('Search response:', { status: response.status, data });
+        
+        if (response.ok) {
+          console.log('Found users:', data.users);
+          setSearchResults(data.users || []);
+          if (!data.users || data.users.length === 0) {
+            toast.info('No users found with that handle');
+          }
+        } else {
+          console.error('Search failed:', { status: response.status, error: data.error, details: data.details });
+          toast.error(data.error || `Failed to search users (${response.status})`);
+          setSearchResults([]);
+        }
+      } catch (error) {
+        console.error('Search error:', error);
+        toast.error(`Error searching users: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        setSearchResults([]);
+      } finally {
+        setIsSearching(false);
+      }
+    },
+    []
+  );
+  
+  const handleInviteUser = async (selectedUser: any, slot: string) => {
+    try {
+      // Prevent inviting yourself
+      if (selectedUser.clerk_id === user?.id) {
+        toast.error('You cannot invite yourself');
+        return;
+      }
+
+      // Determine slot type
+      const slotType = slot.startsWith('host') ? 'host' : 'opponent';
+      
+      // Send invite via API
+      const response = await fetch('/api/room/invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          invitedUserId: selectedUser.clerk_id,
+          roomId,
+          slot,
+          slotType,
+          roomMode
+        })
+      });
+
+      const data = await response.json();
+      console.log('Invite response:', { status: response.status, data });
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to send invite');
+      }
+
+      // Update local state
+      setInvitedUsers(prev => ({
+        ...prev,
+        [slot]: selectedUser
+      }));
+      
+      setActiveSlot(null);
+      setSearchQuery('');
+      setSearchResults([]);
+      
+      toast.success(`Invite sent to ${selectedUser.codeforces_handle}!`, {
+        description: 'They will receive a notification to accept or reject'
+      });
+    } catch (error) {
+      console.error('Error inviting user:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to send invite');
+    }
+  };
+  
+  const handleRemoveUser = async (slot: string, isCurrentUser: boolean) => {
+    // Prevent room creator from leaving
+    if (isCurrentUser && isRoomCreator) {
+      toast.error('Room creator cannot leave', {
+        description: 'Use "Discard Room" button to delete the room'
+      });
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/room/invites/remove', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomId, slot })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to remove user');
+      }
+
+      const data = await response.json();
+      console.log('✅ User removed successfully from slot:', slot, data);
+
+      // Update local state immediately
+      setInvitedUsers(prev => ({
+        ...prev,
+        [slot]: null
+      }));
+      
+      if (isCurrentUser) {
+        // User clicked Leave button themselves
+        setCurrentUserSlot(null);
+        toast.success('You left the room', {
+          description: 'Redirecting to dashboard...'
+        });
+        setTimeout(() => {
+          window.location.href = '/dashboard';
+        }, 1000);
+      } else {
+        // Host removed someone else
+        console.log('✅ Host removed user from slot');
+        toast.info('User removed from slot');
+      }
+    } catch (error) {
+      console.error('Error removing user:', error);
+      toast.error('Failed to remove user');
+    }
+  };
+
+  const handleDiscardRoom = async () => {
+    // Show confirmation toast
+    toast('Are you sure you want to discard this room?', {
+      description: 'All invites will be cancelled and the room will be deleted.',
+      duration: 10000,
+      action: {
+        label: 'Yes, Discard',
+        onClick: async () => {
+          try {
+            
+            toast.loading('Discarding room...');
+            
+            const response = await fetch('/api/room/discard', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ roomId })
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+              throw new Error(data.error || 'Failed to discard room');
+            }
+
+            toast.success('Room discarded successfully');
+            
+            // Redirect to dashboard after a short delay
+            setTimeout(() => {
+              window.location.href = '/dashboard';
+            }, 1000);
+            
+          } catch (error) {
+            console.error('Error discarding room:', error);
+            toast.error(error instanceof Error ? error.message : 'Failed to discard room');
+          }
+        }
+      },
+      cancel: {
+        label: 'Cancel',
+        onClick: () => {
+          toast.info('Room discard cancelled');
+        }
+      }
+    });
+  };
   return (
     <div className="relative flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-black via-gray-900 to-black p-4 overflow-hidden">
       {/* Subtle grid pattern */}
@@ -111,7 +647,10 @@ export default function RoomPage() {
                 </span>
               </HoverButton>
 
-              <HoverButton className="bg-gradient-to-r from-red-500/20 to-rose-500/20 hover:from-red-500/30 hover:to-rose-500/30 px-4 py-2.5 group/button">
+              <HoverButton 
+                onClick={handleDiscardRoom}
+                className="bg-gradient-to-r from-red-500/20 to-rose-500/20 hover:from-red-500/30 hover:to-rose-500/30 px-4 py-2.5 group/button"
+              >
                 <span className="relative z-10 flex items-center gap-3 transition-all duration-300">
                   <span className="relative text-white">
                     <svg
@@ -158,78 +697,190 @@ export default function RoomPage() {
             <div className="rounded-xl border border-white/10 bg-white/5 p-6">
               <h2 className="text-2xl font-semibold text-white mb-3">Hosts</h2>
               <div className="space-y-2">
-                <div className="flex items-center justify-between py-2 px-3 bg-black/30 rounded-lg">
+                {/* Current User - Host 1 */}
+                <div className="flex items-center justify-between py-2 px-3 bg-gradient-to-r from-green-500/10 to-emerald-500/10 border border-green-500/20 rounded-lg">
                   <div className="flex items-center space-x-3">
-                    <div className="w-8 h-8 rounded-full bg-gray-700/50 flex items-center justify-center">
-                      <span className="text-base">👤</span>
+                    <div className="w-8 h-8 rounded-full bg-green-600/30 flex items-center justify-center border border-green-500/30">
+                      <svg fill="#10b981" height="18" width="18" role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M14.123.0007c-.5442-.0038-1.0301.008-1.4389.0204C7.185.1697 4.2115 1.7057 4.2115 1.7057s-.2967.1988-.148.8428c0 0 .0993.7921.1983 1.139l.0494.0996c-.099.099-.4958.2973-.6445.4954-.3468.446-.0493 2.4772-.0493 2.4772.3468 2.1303.6938 2.5265.6938 2.5265s.4956.6436 1.1892 1.0895c.2973.1486.2477.4954.2477.4954L3.3203 24h16.3492l-3.4187-7.4808c.6936 0 2.1306.3464 2.9232-1.883.7432-2.1303 1.1397-5.3502 1.1893-6.2915.099-.9414-.0999-2.9233-.0503-3.4187 0-.1486.3473-.6442.3473-.9415.0496-.4459-.0006-.8418-.0996-1.585-.0496-.2972-.0983-.644-.1974-.9908-.0496-.2478-.0999-.3964-.298-.4955C17.91.1701 15.7555.0124 14.123.0007Zm-1.4389.4171c.545 0 5.1027-.0492 7.233.8922.1983.1486.0498.8915-.0493 1.2879-.0495.2972-.3967.3967-.3967.3967-.3468.099-.446.3464-.446.3464s.4458 4.3102.4954 4.4589c.0495.1981-.1485.1981-.5448.2477-.1982 0-2.4772.0493-2.4772.0493s-.4956-.0491-.446-.3464c0-.1981.0992-.595.1983-.595h.4461s.991.0497.6938-.0494l-1.0402-.2477s-.2483.0004-.3474.149c-.0495.1486-.297.9415-.297.9415s-.0002.0491.0493.0987c.0495.0495 2.5768 1.883 2.5768 1.883s-2.1311-.199-2.7752-.0503c-.644.1486-1.9813.8422-2.8235.9908-.8422.1487-3.9636.4955-4.1618.4955l-1.2386-5.35s-.1484-1.3375-1.5356-1.288c-1.0404.0495-1.189.2967-1.2386.3958-.099.1981 0 .3967 0 .3967l3.3693 5.7468s-2.2792-1.0896-3.171-2.3282c-.4954-.644-.9416-3.8645-.6444-4.4095.2973-.4954 2.1306-.8915 2.9233-.7925.3963.0496.7433.4452.9415.6929.0495.099.0985.0501.148.0996 0 0-.1982-1.2383-.9909-1.2879-1.1394-.099-2.3774.3464-2.3774.3464s-.0995-.0004-.149-.149c-.0496-.1982-.1984-1.2386-.1984-1.2386s.0495-.198.2477-.297c0 0 3.2209-1.4863 8.0265-1.4863zm.6435 1.4273c-.0704.003-.0987.0096-.0987.0096-2.0808.8423-3.765 2.675-3.765 2.5759.1981.0495.594 0 .594 0 1.8332-1.5854 3.4187-2.2295 3.4187-2.2295 1.3377 0 3.6165.7927 3.765.7432.0496 0 .0498-.2475-.0493-.297-.2477-.0496-.7433-.2973-1.6846-.4955-1.3748-.2973-1.9688-.316-2.1801-.3067Zm6.788 1.3972c.1981.0496.198.049.297.148.1486.0992.0991.3966 0 .4461-.099.0991-.1484-.0988-.7925-.0493 0 0 .2973-.5943.4955-.5448zm-4.8711.1016c-.3623-.0186-.8641.0469-1.4215.1955-.7431.1982-2.2294.9415-2.2294.9415.5945.2477 1.5861.3468 2.5275.4954 1.0404.0991 2.179-.446 2.179-.446-.0495-.1487-.3963-1.0408-.743-1.14-.0868-.0247-.1919-.0402-.3126-.0464zm.7867 7.4015c.7242.0174 1.5759.1012 2.449.3241 0 0 .4957.3964.4461.7432 0 0-3.567.198-4.9543-.9416 0 0 .852-.1548 2.0592-.1257zm-9.7383.176 1.5356 1.0403 2.5265 11.5429H3.9145Zm11.8032 1.4554a8.479 8.479 0 0 1 .7315.031s.2973.2475-.4954 1.0401c-.9909.9414-2.7256 1.6843-4.2615 1.288 0 0 .5664-2.351 4.0254-2.3591zm-8.0875 4.1918s3.1216 1.9323 3.617 2.6755l.3464 4.3108h-2.2787Zm5.3007 3.9634s1.8335 1.6852 2.3785 3.0229h-3.0713z"/>
+                      </svg>
                     </div>
-                    <span className="text-sm text-white">You (Host 1)</span>
-                  </div>
-                  <button className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium transition-colors">
-                    Copy Invite Link
-                  </button>
-                </div>
-                <div className="flex items-center justify-between py-2 px-3 bg-black/30 rounded-lg">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-8 h-8 rounded-full bg-gray-700/50 flex items-center justify-center">
-                      <span className="text-base">👤</span>
+                    <div className="flex flex-col">
+                      <span className="text-sm text-white font-medium">
+                        {roomCreatorInfo?.codeforces_handle || (isRoomCreator ? (user?.firstName || user?.username || 'You') : 'Loading...')} (Host 1)
+                      </span>
+                      <span className="text-xs text-green-300">Room Creator</span>
                     </div>
-                    <span className="text-sm text-white">You (Host 2)</span>
                   </div>
-                  <button className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium transition-colors">
-                    Copy Invite Link
-                  </button>
+                  <Badge className="bg-green-600/20 text-green-300 border-green-500/30">
+                    Active
+                  </Badge>
                 </div>
-                <div className="flex items-center justify-between py-2 px-3 bg-black/30 rounded-lg">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-8 h-8 rounded-full bg-gray-700/50 flex items-center justify-center">
-                      <span className="text-base">👤</span>
+                
+                {/* Host 2 - Invite (Only show in team mode) */}
+                {roomMode === 'team-vs-team' && (
+                <div className="flex items-center justify-between py-2 px-3 bg-black/30 rounded-lg border border-white/5">
+                  <div className="flex items-center space-x-3 flex-1">
+                    <div className="w-8 h-8 rounded-full bg-gray-700/50 flex items-center justify-center border border-gray-600/30">
+                      {invitedUsers.host2 ? (
+                        <svg fill="#3b82f6" height="18" width="18" role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M14.123.0007c-.5442-.0038-1.0301.008-1.4389.0204C7.185.1697 4.2115 1.7057 4.2115 1.7057s-.2967.1988-.148.8428c0 0 .0993.7921.1983 1.139l.0494.0996c-.099.099-.4958.2973-.6445.4954-.3468.446-.0493 2.4772-.0493 2.4772.3468 2.1303.6938 2.5265.6938 2.5265s.4956.6436 1.1892 1.0895c.2973.1486.2477.4954.2477.4954L3.3203 24h16.3492l-3.4187-7.4808c.6936 0 2.1306.3464 2.9232-1.883.7432-2.1303 1.1397-5.3502 1.1893-6.2915.099-.9414-.0999-2.9233-.0503-3.4187 0-.1486.3473-.6442.3473-.9415.0496-.4459-.0006-.8418-.0996-1.585-.0496-.2972-.0983-.644-.1974-.9908-.0496-.2478-.0999-.3964-.298-.4955C17.91.1701 15.7555.0124 14.123.0007Zm-1.4389.4171c.545 0 5.1027-.0492 7.233.8922.1983.1486.0498.8915-.0493 1.2879-.0495.2972-.3967.3967-.3967.3967-.3468.099-.446.3464-.446.3464s.4458 4.3102.4954 4.4589c.0495.1981-.1485.1981-.5448.2477-.1982 0-2.4772.0493-2.4772.0493s-.4956-.0491-.446-.3464c0-.1981.0992-.595.1983-.595h.4461s.991.0497.6938-.0494l-1.0402-.2477s-.2483.0004-.3474.149c-.0495.1486-.297.9415-.297.9415s-.0002.0491.0493.0987c.0495.0495 2.5768 1.883 2.5768 1.883s-2.1311-.199-2.7752-.0503c-.644.1486-1.9813.8422-2.8235.9908-.8422.1487-3.9636.4955-4.1618.4955l-1.2386-5.35s-.1484-1.3375-1.5356-1.288c-1.0404.0495-1.189.2967-1.2386.3958-.099.1981 0 .3967 0 .3967l3.3693 5.7468s-2.2792-1.0896-3.171-2.3282c-.4954-.644-.9416-3.8645-.6444-4.4095.2973-.4954 2.1306-.8915 2.9233-.7925.3963.0496.7433.4452.9415.6929.0495.099.0985.0501.148.0996 0 0-.1982-1.2383-.9909-1.2879-1.1394-.099-2.3774.3464-2.3774.3464s-.0995-.0004-.149-.149c-.0496-.1982-.1984-1.2386-.1984-1.2386s.0495-.198.2477-.297c0 0 3.2209-1.4863 8.0265-1.4863zm.6435 1.4273c-.0704.003-.0987.0096-.0987.0096-2.0808.8423-3.765 2.675-3.765 2.5759.1981.0495.594 0 .594 0 1.8332-1.5854 3.4187-2.2295 3.4187-2.2295 1.3377 0 3.6165.7927 3.765.7432.0496 0 .0498-.2475-.0493-.297-.2477-.0496-.7433-.2973-1.6846-.4955-1.3748-.2973-1.9688-.316-2.1801-.3067Zm6.788 1.3972c.1981.0496.198.049.297.148.1486.0992.0991.3966 0 .4461-.099.0991-.1484-.0988-.7925-.0493 0 0 .2973-.5943.4955-.5448zm-4.8711.1016c-.3623-.0186-.8641.0469-1.4215.1955-.7431.1982-2.2294.9415-2.2294.9415.5945.2477 1.5861.3468 2.5275.4954 1.0404.0991 2.179-.446 2.179-.446-.0495-.1487-.3963-1.0408-.743-1.14-.0868-.0247-.1919-.0402-.3126-.0464zm.7867 7.4015c.7242.0174 1.5759.1012 2.449.3241 0 0 .4957.3964.4461.7432 0 0-3.567.198-4.9543-.9416 0 0 .852-.1548 2.0592-.1257zm-9.7383.176 1.5356 1.0403 2.5265 11.5429H3.9145Zm11.8032 1.4554a8.479 8.479 0 0 1 .7315.031s.2973.2475-.4954 1.0401c-.9909.9414-2.7256 1.6843-4.2615 1.288 0 0 .5664-2.351 4.0254-2.3591zm-8.0875 4.1918s3.1216 1.9323 3.617 2.6755l.3464 4.3108h-2.2787Zm5.3007 3.9634s1.8335 1.6852 2.3785 3.0229h-3.0713z"/>
+                        </svg>
+                      ) : (
+                        <UserPlus className="w-4 h-4 text-gray-400" />
+                      )}
                     </div>
-                    <span className="text-sm text-white">You (Host 3)</span>
+                    <span className="text-sm text-white">
+                      {invitedUsers.host2 ? invitedUsers.host2.codeforces_handle : 'Host 2 (Empty)'}
+                    </span>
                   </div>
-                  <button className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium transition-colors">
-                    Copy Invite Link
-                  </button>
+                  {invitedUsers.host2 ? (
+                    <button 
+                      onClick={() => handleRemoveUser('host2', invitedUsers.host2.clerk_id === user?.id)}
+                      className="px-3 py-1.5 bg-red-600/20 hover:bg-red-600/30 text-red-300 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5"
+                    >
+                      {invitedUsers.host2.clerk_id === user?.id ? 'Leave' : 'Remove'}
+                    </button>
+                  ) : (
+                    <button 
+                      onClick={() => setActiveSlot({type: 'host', index: 2})}
+                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 hover:scale-105 active:scale-95"
+                    >
+                      <UserPlus className="w-3 h-3" />
+                      Invite
+                    </button>
+                  )}
                 </div>
+                )}
+                
+                {/* Host 3 - Invite (Only show in team mode) */}
+                {roomMode === 'team-vs-team' && (
+                <div className="flex items-center justify-between py-2 px-3 bg-black/30 rounded-lg border border-white/5">
+                  <div className="flex items-center space-x-3 flex-1">
+                    <div className="w-8 h-8 rounded-full bg-gray-700/50 flex items-center justify-center border border-gray-600/30">
+                      {invitedUsers.host3 ? (
+                        <svg fill="#3b82f6" height="18" width="18" role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M14.123.0007c-.5442-.0038-1.0301.008-1.4389.0204C7.185.1697 4.2115 1.7057 4.2115 1.7057s-.2967.1988-.148.8428c0 0 .0993.7921.1983 1.139l.0494.0996c-.099.099-.4958.2973-.6445.4954-.3468.446-.0493 2.4772-.0493 2.4772.3468 2.1303.6938 2.5265.6938 2.5265s.4956.6436 1.1892 1.0895c.2973.1486.2477.4954.2477.4954L3.3203 24h16.3492l-3.4187-7.4808c.6936 0 2.1306.3464 2.9232-1.883.7432-2.1303 1.1397-5.3502 1.1893-6.2915.099-.9414-.0999-2.9233-.0503-3.4187 0-.1486.3473-.6442.3473-.9415.0496-.4459-.0006-.8418-.0996-1.585-.0496-.2972-.0983-.644-.1974-.9908-.0496-.2478-.0999-.3964-.298-.4955C17.91.1701 15.7555.0124 14.123.0007Zm-1.4389.4171c.545 0 5.1027-.0492 7.233.8922.1983.1486.0498.8915-.0493 1.2879-.0495.2972-.3967.3967-.3967.3967-.3468.099-.446.3464-.446.3464s.4458 4.3102.4954 4.4589c.0495.1981-.1485.1981-.5448.2477-.1982 0-2.4772.0493-2.4772.0493s-.4956-.0491-.446-.3464c0-.1981.0992-.595.1983-.595h.4461s.991.0497.6938-.0494l-1.0402-.2477s-.2483.0004-.3474.149c-.0495.1486-.297.9415-.297.9415s-.0002.0491.0493.0987c.0495.0495 2.5768 1.883 2.5768 1.883s-2.1311-.199-2.7752-.0503c-.644.1486-1.9813.8422-2.8235.9908-.8422.1487-3.9636.4955-4.1618.4955l-1.2386-5.35s-.1484-1.3375-1.5356-1.288c-1.0404.0495-1.189.2967-1.2386.3958-.099.1981 0 .3967 0 .3967l3.3693 5.7468s-2.2792-1.0896-3.171-2.3282c-.4954-.644-.9416-3.8645-.6444-4.4095.2973-.4954 2.1306-.8915 2.9233-.7925.3963.0496.7433.4452.9415.6929.0495.099.0985.0501.148.0996 0 0-.1982-1.2383-.9909-1.2879-1.1394-.099-2.3774.3464-2.3774.3464s-.0995-.0004-.149-.149c-.0496-.1982-.1984-1.2386-.1984-1.2386s.0495-.198.2477-.297c0 0 3.2209-1.4863 8.0265-1.4863zm.6435 1.4273c-.0704.003-.0987.0096-.0987.0096-2.0808.8423-3.765 2.675-3.765 2.5759.1981.0495.594 0 .594 0 1.8332-1.5854 3.4187-2.2295 3.4187-2.2295 1.3377 0 3.6165.7927 3.765.7432.0496 0 .0498-.2475-.0493-.297-.2477-.0496-.7433-.2973-1.6846-.4955-1.3748-.2973-1.9688-.316-2.1801-.3067Zm6.788 1.3972c.1981.0496.198.049.297.148.1486.0992.0991.3966 0 .4461-.099.0991-.1484-.0988-.7925-.0493 0 0 .2973-.5943.4955-.5448zm-4.8711.1016c-.3623-.0186-.8641.0469-1.4215.1955-.7431.1982-2.2294.9415-2.2294.9415.5945.2477 1.5861.3468 2.5275.4954 1.0404.0991 2.179-.446 2.179-.446-.0495-.1487-.3963-1.0408-.743-1.14-.0868-.0247-.1919-.0402-.3126-.0464zm.7867 7.4015c.7242.0174 1.5759.1012 2.449.3241 0 0 .4957.3964.4461.7432 0 0-3.567.198-4.9543-.9416 0 0 .852-.1548 2.0592-.1257zm-9.7383.176 1.5356 1.0403 2.5265 11.5429H3.9145Zm11.8032 1.4554a8.479 8.479 0 0 1 .7315.031s.2973.2475-.4954 1.0401c-.9909.9414-2.7256 1.6843-4.2615 1.288 0 0 .5664-2.351 4.0254-2.3591zm-8.0875 4.1918s3.1216 1.9323 3.617 2.6755l.3464 4.3108h-2.2787Zm5.3007 3.9634s1.8335 1.6852 2.3785 3.0229h-3.0713z"/>
+                        </svg>
+                      ) : (
+                        <UserPlus className="w-4 h-4 text-gray-400" />
+                      )}
+                    </div>
+                    <span className="text-sm text-white">
+                      {invitedUsers.host3 ? invitedUsers.host3.codeforces_handle : 'Host 3 (Empty)'}
+                    </span>
+                  </div>
+                  {invitedUsers.host3 ? (
+                    <button 
+                      onClick={() => handleRemoveUser('host3', invitedUsers.host3.clerk_id === user?.id)}
+                      className="px-3 py-1.5 bg-red-600/20 hover:bg-red-600/30 text-red-300 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5"
+                    >
+                      {invitedUsers.host3.clerk_id === user?.id ? 'Leave' : 'Remove'}
+                    </button>
+                  ) : (
+                    <button 
+                      onClick={() => setActiveSlot({type: 'host', index: 3})}
+                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 hover:scale-105 active:scale-95"
+                    >
+                      <UserPlus className="w-3 h-3" />
+                      Invite
+                    </button>
+                  )}
+                </div>
+                )}
               </div>
             </div>
 
             <div className="rounded-xl border border-white/10 bg-white/5 p-6">
-              <h2 className="text-2xl font-semibold text-white mb-3">Opponent</h2>
+              <h2 className="text-2xl font-semibold text-white mb-3">Opponents</h2>
               <div className="space-y-2">
-                <div className="flex items-center justify-between py-2 px-3 bg-black/30 rounded-lg">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-8 h-8 rounded-full bg-gray-700/50 flex items-center justify-center">
-                      <span className="text-base">👤</span>
+                {/* Opponent 1 - Invite (Always show) */}
+                <div className="flex items-center justify-between py-2 px-3 bg-black/30 rounded-lg border border-white/5">
+                  <div className="flex items-center space-x-3 flex-1">
+                    <div className="w-8 h-8 rounded-full bg-gray-700/50 flex items-center justify-center border border-gray-600/30">
+                      <UserPlus className="w-4 h-4 text-gray-400" />
                     </div>
-                    <span className="text-sm text-white">You (Host 1)</span>
+                    <span className="text-sm text-white">
+                      {invitedUsers.opponent1 ? invitedUsers.opponent1.codeforces_handle : 'Opponent 1 (Empty)'}
+                    </span>
                   </div>
-                  <button className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium transition-colors">
-                    Copy Invite Link
-                  </button>
+                  {invitedUsers.opponent1 ? (
+                    <button 
+                      onClick={() => handleRemoveUser('opponent1', invitedUsers.opponent1.clerk_id === user?.id)}
+                      className="px-3 py-1.5 bg-red-600/20 hover:bg-red-600/30 text-red-300 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5"
+                    >
+                      {invitedUsers.opponent1.clerk_id === user?.id ? 'Leave' : 'Remove'}
+                    </button>
+                  ) : (
+                    <button 
+                      onClick={() => setActiveSlot({type: 'opponent', index: 1})}
+                      className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 hover:scale-105 active:scale-95"
+                    >
+                      <UserPlus className="w-3 h-3" />
+                      Invite
+                    </button>
+                  )}
                 </div>
-                <div className="flex items-center justify-between py-2 px-3 bg-black/30 rounded-lg">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-8 h-8 rounded-full bg-gray-700/50 flex items-center justify-center">
-                      <span className="text-base">👤</span>
+                
+                {/* Opponent 2 - Invite (Only show in team mode) */}
+                {roomMode === 'team-vs-team' && (
+                <div className="flex items-center justify-between py-2 px-3 bg-black/30 rounded-lg border border-white/5">
+                  <div className="flex items-center space-x-3 flex-1">
+                    <div className="w-8 h-8 rounded-full bg-gray-700/50 flex items-center justify-center border border-gray-600/30">
+                      <UserPlus className="w-4 h-4 text-gray-400" />
                     </div>
-                    <span className="text-sm text-white">You (Host 2)</span>
+                    <span className="text-sm text-white">
+                      {invitedUsers.opponent2 ? invitedUsers.opponent2.codeforces_handle : 'Opponent 2 (Empty)'}
+                    </span>
                   </div>
-                  <button className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium transition-colors">
-                    Copy Invite Link
-                  </button>
+                  {invitedUsers.opponent2 ? (
+                    <button 
+                      onClick={() => handleRemoveUser('opponent2', invitedUsers.opponent2.clerk_id === user?.id)}
+                      className="px-3 py-1.5 bg-red-600/20 hover:bg-red-600/30 text-red-300 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5"
+                    >
+                      {invitedUsers.opponent2.clerk_id === user?.id ? 'Leave' : 'Remove'}
+                    </button>
+                  ) : (
+                    <button 
+                      onClick={() => setActiveSlot({type: 'opponent', index: 2})}
+                      className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 hover:scale-105 active:scale-95"
+                    >
+                      <UserPlus className="w-3 h-3" />
+                      Invite
+                    </button>
+                  )}
                 </div>
-                <div className="flex items-center justify-between py-2 px-3 bg-black/30 rounded-lg">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-8 h-8 rounded-full bg-gray-700/50 flex items-center justify-center">
-                      <span className="text-base">👤</span>
+                )}
+                
+                {/* Opponent 3 - Invite (Only show in team mode) */}
+                {roomMode === 'team-vs-team' && (
+                <div className="flex items-center justify-between py-2 px-3 bg-black/30 rounded-lg border border-white/5">
+                  <div className="flex items-center space-x-3 flex-1">
+                    <div className="w-8 h-8 rounded-full bg-gray-700/50 flex items-center justify-center border border-gray-600/30">
+                      <UserPlus className="w-4 h-4 text-gray-400" />
                     </div>
-                    <span className="text-sm text-white">You (Host 3)</span>
+                    <span className="text-sm text-white">
+                      {invitedUsers.opponent3 ? invitedUsers.opponent3.codeforces_handle : 'Opponent 3 (Empty)'}
+                    </span>
                   </div>
-                  <button className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium transition-colors">
-                    Copy Invite Link
-                  </button>
+                  {invitedUsers.opponent3 ? (
+                    <button 
+                      onClick={() => handleRemoveUser('opponent3', invitedUsers.opponent3.clerk_id === user?.id)}
+                      className="px-3 py-1.5 bg-red-600/20 hover:bg-red-600/30 text-red-300 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5"
+                    >
+                      {invitedUsers.opponent3.clerk_id === user?.id ? 'Leave' : 'Remove'}
+                    </button>
+                  ) : (
+                    <button 
+                      onClick={() => setActiveSlot({type: 'opponent', index: 3})}
+                      className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 hover:scale-105 active:scale-95"
+                    >
+                      <UserPlus className="w-3 h-3" />
+                      Invite
+                    </button>
+                  )}
                 </div>
+                )}
               </div>
             </div>
           </div>
@@ -362,6 +1013,146 @@ export default function RoomPage() {
           </div>
         </div>
       </div>
+      
+      {/* Search Modal */}
+      <AnimatePresence>
+        {activeSlot && (
+          <motion.div 
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md" 
+          onClick={() => {
+            setActiveSlot(null);
+            setSearchQuery('');
+            setSearchResults([]);
+          }}
+        >
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0, y: 20 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            exit={{ scale: 0.9, opacity: 0, y: 20 }}
+            transition={{ type: "spring", duration: 0.3 }}
+            className="relative w-full max-w-lg mx-4" 
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="rounded-2xl border border-white/20 bg-gradient-to-br from-gray-900 via-gray-900 to-black p-6 shadow-2xl">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-2xl font-bold text-white">
+                  Invite {activeSlot.type === 'host' ? `Host ${activeSlot.index}` : `Opponent ${activeSlot.index}`}
+                </h3>
+                <button
+                  onClick={() => {
+                    setActiveSlot(null);
+                    setSearchQuery('');
+                    setSearchResults([]);
+                  }}
+                  className="w-8 h-8 flex items-center justify-center rounded-full bg-white/5 hover:bg-white/10 text-white/60 hover:text-white transition-all"
+                >
+                  ✕
+                </button>
+              </div>
+              
+              <div className="relative mb-4">
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => handleSearch(e.target.value)}
+                  placeholder="Search by Codeforces handle..."
+                  className="w-full px-4 py-3 bg-black/40 border border-white/20 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/20 transition-all"
+                  autoFocus
+                />
+                {isSearching && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                  </div>
+                )}
+              </div>
+              
+              <div className="min-h-[200px] max-h-80">
+                {searchResults.length > 0 ? (
+                  <div className="space-y-2 overflow-y-auto max-h-80 pr-2 custom-scrollbar">
+                    {searchResults.map((result, index) => (
+                      <motion.button
+                        key={result.id}
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: index * 0.05 }}
+                        onClick={() => handleInviteUser(result, `${activeSlot.type}${activeSlot.index}`)}
+                        className="w-full flex items-center justify-between p-4 bg-gradient-to-r from-black/40 to-black/20 hover:from-blue-600/20 hover:to-purple-600/20 rounded-xl border border-white/10 hover:border-blue-500/30 transition-all group"
+                      >
+                        <div className="flex items-center space-x-3">
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-600/40 to-purple-600/40 flex items-center justify-center border border-white/10">
+                            <span className="text-lg">👤</span>
+                          </div>
+                          <div className="text-left">
+                            <div className="text-sm font-semibold text-white group-hover:text-blue-300 transition-colors">
+                              {result.codeforces_handle}
+                            </div>
+                            <div className="text-xs text-gray-400">Codeforces User</div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <UserPlus className="w-5 h-5 text-blue-400 group-hover:scale-110 transition-transform" />
+                        </div>
+                      </motion.button>
+                    ))}
+                  </div>
+                ) : searchQuery.trim().length >= 2 && !isSearching ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+                    <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center mb-4">
+                      <span className="text-3xl">🔍</span>
+                    </div>
+                    <p className="text-lg font-medium">No users found</p>
+                    <p className="text-sm text-gray-500 mt-1">Try a different search term</p>
+                  </div>
+                ) : searchQuery.trim().length < 2 && !isSearching ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+                    <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center mb-4">
+                      <span className="text-3xl">⌨️</span>
+                    </div>
+                    <p className="text-sm">Type at least 2 characters to search</p>
+                  </div>
+                ) : isSearching ? (
+                  <div className="flex flex-col items-center justify-center py-12">
+                    <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4" />
+                    <p className="text-gray-400">Searching...</p>
+                  </div>
+                ) : null}
+              </div>
+              
+              <button
+                onClick={() => {
+                  setActiveSlot(null);
+                  setSearchQuery('');
+                  setSearchResults([]);
+                }}
+                className="mt-6 w-full px-4 py-3 bg-white/5 hover:bg-white/10 text-white rounded-xl transition-all font-medium"
+              >
+                Cancel
+              </button>
+            </div>
+          </motion.div>
+        </motion.div>
+        )}
+      </AnimatePresence>
+      
+      <style jsx global>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: rgba(255, 255, 255, 0.05);
+          border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: rgba(255, 255, 255, 0.2);
+          border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: rgba(255, 255, 255, 0.3);
+        }
+      `}</style>
     </div>
   )
 }

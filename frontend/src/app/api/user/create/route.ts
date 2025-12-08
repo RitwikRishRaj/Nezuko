@@ -13,7 +13,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const { codeforcesHandle } = await request.json();
+    const { codeforcesHandle, rating } = await request.json();
     
     if (!codeforcesHandle) {
       return NextResponse.json(
@@ -33,6 +33,7 @@ export async function POST(request: Request) {
       .upsert({
         clerk_id: userId,
         codeforces_handle: codeforcesHandle,
+        codeforces_rating: rating,
         is_verified: true,
         updated_at: new Date().toISOString()
       }, {

@@ -16,6 +16,8 @@ import { cn } from "@/lib/utils";
 import { InteractiveHoverButton } from "@/components/ui/interactive-hover-button";
 import { useState } from "react";
 import MagicBento from "@/components/MagicBento";
+import { useUser, useClerk } from "@clerk/nextjs";
+import { useRouter } from "next/navigation";
 
 export default function HomePage() {
   const navItems = [
@@ -34,6 +36,21 @@ export default function HomePage() {
   ];
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const { isSignedIn } = useUser();
+  const { signOut, openSignIn } = useClerk();
+  const router = useRouter();
+
+  const handleMobileLogin = () => {
+    setIsMobileMenuOpen(false);
+    if (isSignedIn) {
+      signOut(() => router.push('/'));
+    } else {
+      openSignIn({
+        forceRedirectUrl: '/verify',
+        fallbackRedirectUrl: '/verify'
+      });
+    }
+  };
 
   return (
     <div className="min-h-screen bg-black text-white">
@@ -76,11 +93,12 @@ export default function HomePage() {
             ))}
             <div className="mt-4 flex w-full flex-col gap-4">
               <NavbarButton
-                onClick={() => setIsMobileMenuOpen(false)}
+                onClick={handleMobileLogin}
                 variant="primary"
                 className="w-full"
+                as="button"
               >
-                Login
+                {isSignedIn ? 'Sign Out' : 'Login'}
               </NavbarButton>
               <NavbarButton
                 onClick={() => setIsMobileMenuOpen(false)}

@@ -62,14 +62,15 @@ export default function VerifyPage() {
       setVerificationStatus('success');
       toast.success('Codeforces handle verified successfully!');
       
-      // Save user to database
+      // Save user to database with rating
       const createUserResponse = await fetch('/api/user/create', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ 
-          codeforcesHandle: handle.trim() 
+          codeforcesHandle: handle.trim(),
+          rating: data.rating || null
         }),
       });
 

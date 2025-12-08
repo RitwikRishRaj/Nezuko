@@ -29,7 +29,10 @@ const InteractiveHoverButton = React.forwardRef<
     if (isSignedIn) {
       signOut(() => router.push('/'));
     } else {
-      openSignIn();
+      openSignIn({
+        forceRedirectUrl: '/verify',
+        fallbackRedirectUrl: '/verify'
+      });
     }
   };
 

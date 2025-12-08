@@ -13,6 +13,7 @@ import {
   IconActivity,
   IconUserBolt,
 } from "@tabler/icons-react";
+import { RatingUpdater } from "@/components/RatingUpdater";
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -187,6 +188,7 @@ export default function DashboardLayout({
 
   return (
     <div className={`${geistSans.variable} ${geistMono.variable} antialiased h-screen`}>
+      <RatingUpdater />
       <div 
         className="flex h-full"
         style={{

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-const VERIFICATION_SERVICE_URL = 'http://localhost:3001/verify-codeforces';
+const VERIFICATION_SERVICE_URL = process.env.VERIFICATION_SERVICE_URL || 'http://localhost:3001/verify-codeforces';
 
 export async function POST(request: Request) {
   try {
@@ -21,27 +21,38 @@ export async function POST(request: Request) {
       body: JSON.stringify({ handle: handle.trim() }),
     });
 
+    const data = await response.json();
+
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
       return NextResponse.json(
-        { success: false, error: errorData.error || 'Verification failed' },
+        { success: false, error: data.error || data.message || 'Verification failed' },
         { status: response.status }
       );
     }
 
-    const data = await response.json();
+    // Return the response from the verification service
     return NextResponse.json({
       success: data.success,
       message: data.message,
-      ...(data.submissionId && { submissionId: data.submissionId })
+      ...(data.submissionId && { submissionId: data.submissionId }),
+      ...(data.rating !== undefined && { rating: data.rating })
     });
 
   } catch (error) {
     console.error('Verification API error:', error);
+    
+    // Check if it's a connection error
+    const errorMessage = error instanceof Error ? error.message : 'Internal server error';
+    const isConnectionError = errorMessage.includes('ECONNREFUSED') || 
+                              errorMessage.includes('fetch failed') ||
+                              errorMessage.includes('Failed to fetch');
+    
     return NextResponse.json(
       { 
         success: false, 
-        error: error instanceof Error ? error.message : 'Internal server error' 
+        error: isConnectionError 
+          ? `Verification service is not available. Please make sure the verification service is running. Expected URL: ${VERIFICATION_SERVICE_URL}`
+          : errorMessage
       },
       { status: 500 }
     );

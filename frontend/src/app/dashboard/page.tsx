@@ -7,14 +7,14 @@ import {
   IconUsersGroup
 } from "@tabler/icons-react";
 import SpotlightCard from "@/components/SpotlightCard";
+import { HoverButton } from "@/components/ui/hover-button";
 
 export default function ArenaPage() {
   const router = useRouter();
 
   const handleModeSelect = (mode: string) => {
     console.log(`Selected mode: ${mode}`);
-    // You can add navigation logic here based on the selected mode
-    // Example: router.push(`/dashboard/arena/${mode}`);
+    router.push(`/room?mode=${mode}`);
   };
 
   return (
@@ -63,8 +63,12 @@ export default function ArenaPage() {
                 </div>
                 <h3 className="text-2xl font-bold text-white mb-2">1v1 Duel</h3>
                 <p className="text-blue-200 mb-6">Challenge a single opponent in a head-to-head coding battle</p>
-                <div className="mt-auto px-6 py-2 bg-blue-600/80 text-white/90 rounded-full text-sm font-medium">
-                  Select 1v1
+                <div className="mt-auto">
+                  <HoverButton className="bg-gradient-to-r from-blue-500/20 to-cyan-500/20 hover:from-blue-500/30 hover:to-cyan-500/30 px-6 py-2.5 group/button">
+                    <span className="relative z-10 flex items-center gap-2 transition-all duration-300">
+                      <span className="font-semibold text-white/95 group-hover/button:translate-y-[-1px] group-hover/button:scale-105 transition-all duration-300">Select 1v1</span>
+                    </span>
+                  </HoverButton>
                 </div>
               </div>
             </SpotlightCard>
@@ -90,8 +94,12 @@ export default function ArenaPage() {
                 </div>
                 <h3 className="text-2xl font-bold text-white mb-2">Team vs Team</h3>
                 <p className="text-purple-200 mb-6">Collaborate with teammates in an epic coding showdown</p>
-                <div className="mt-auto px-6 py-2 bg-purple-600/80 text-white/90 rounded-full text-sm font-medium">
-                  Select Team Battle
+                <div className="mt-auto">
+                  <HoverButton className="bg-gradient-to-r from-purple-500/20 to-pink-500/20 hover:from-purple-500/30 hover:to-pink-500/30 px-6 py-2.5 group/button">
+                    <span className="relative z-10 flex items-center gap-2 transition-all duration-300">
+                      <span className="font-semibold text-white/95 group-hover/button:translate-y-[-1px] group-hover/button:scale-105 transition-all duration-300">Select Team Battle</span>
+                    </span>
+                  </HoverButton>
                 </div>
               </div>
             </SpotlightCard>

@@ -2,6 +2,8 @@ import { type Metadata } from 'next'
 import { ClerkProvider } from '@clerk/nextjs'
 import { IBM_Plex_Sans } from 'next/font/google'
 import './globals.css'
+import { Toaster } from '@/components/ui/sonner'
+import { InviteNotifications } from '@/components/InviteNotifications'
 
 const ibmPlexSans = IBM_Plex_Sans({
   weight: ['300', '400', '500', '600', '700'],
@@ -21,9 +23,14 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <ClerkProvider>
+    <ClerkProvider
+      signInFallbackRedirectUrl="/verify"
+      signUpFallbackRedirectUrl="/verify"
+    >
       <html lang="en" className={`${ibmPlexSans.variable} font-sans`}>
         <body className="antialiased">
+          <Toaster />
+          <InviteNotifications />
           {children}
         </body>
       </html>
