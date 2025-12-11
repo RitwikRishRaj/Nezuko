@@ -70,7 +70,7 @@ This directory contains the backend microservices architecture for AlgoGym, prop
 
 ### Development Mode
 
-1. **Install dependencies for all services:**
+1. **Install dependencies:**
 ```bash
 cd backend
 npm run install-all
@@ -78,7 +78,8 @@ npm run install-all
 
 2. **Set up environment variables:**
 ```bash
-# Copy example files and fill in your values
+# Copy example files and add your actual values
+cp .env.example .env
 cp api-gateway/.env.example api-gateway/.env
 cp microservices/room-service/.env.example microservices/room-service/.env
 cp microservices/user-service/.env.example microservices/user-service/.env
@@ -86,7 +87,7 @@ cp microservices/user-service/.env.example microservices/user-service/.env
 
 3. **Start all services:**
 ```bash
-node start-services.js
+npm run dev
 ```
 
 Or start individual services:
