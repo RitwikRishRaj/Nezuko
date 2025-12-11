@@ -4,10 +4,13 @@ import { useEffect, useRef } from 'react';
 import { useUser } from '@clerk/nextjs';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
+import { useApiClient } from '@/lib/api-client';
+import { API_CONFIG } from '@/lib/api-config';
 
 export function InviteNotifications() {
   const { user, isLoaded } = useUser();
   const router = useRouter();
+  const apiClient = useApiClient();
   const shownInvites = useRef<Set<string>>(new Set());
   const checkInterval = useRef<NodeJS.Timeout | null>(null);
 
@@ -16,10 +19,16 @@ export function InviteNotifications() {
 
     const checkForInvites = async () => {
       try {
-        const response = await fetch('/api/room/invites/check');
+        const response = await apiClient.get(API_CONFIG.ENDPOINTS.ROOM.INVITES_CHECK);
         if (!response.ok) return;
 
-        const data = await response.json();
+        let data;
+        try {
+          data = await response.json();
+        } catch (jsonError) {
+          console.error('Failed to parse invite check response:', jsonError);
+          return;
+        }
         const invites = data.invites || [];
 
         invites.forEach((invite: any) => {
@@ -36,13 +45,9 @@ export function InviteNotifications() {
                   label: 'Accept',
                   onClick: async () => {
                     try {
-                      const res = await fetch('/api/room/invites/respond', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                          inviteId: invite.id,
-                          action: 'accept'
-                        })
+                      const res = await apiClient.post(API_CONFIG.ENDPOINTS.ROOM.INVITES_RESPOND, {
+                        roomId: invite.room_id,
+                        response: 'accept'
                       });
 
                       if (res.ok) {
@@ -50,7 +55,8 @@ export function InviteNotifications() {
                         const mode = invite.room_mode || 'team-vs-team';
                         router.push(`/room?id=${invite.room_id}&mode=${mode}`);
                       } else {
-                        toast.error('Failed to accept invite');
+                        const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
+                        toast.error('Failed to accept invite: ' + (errorData.error || 'Unknown error'));
                       }
                     } catch (error) {
                       console.error('Error accepting invite:', error);
@@ -62,19 +68,16 @@ export function InviteNotifications() {
                   label: 'Reject',
                   onClick: async () => {
                     try {
-                      const res = await fetch('/api/room/invites/respond', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                          inviteId: invite.id,
-                          action: 'reject'
-                        })
+                      const res = await apiClient.post(API_CONFIG.ENDPOINTS.ROOM.INVITES_RESPOND, {
+                        roomId: invite.room_id,
+                        response: 'reject'
                       });
 
                       if (res.ok) {
                         toast.info('Invite rejected');
                       } else {
-                        toast.error('Failed to reject invite');
+                        const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
+                        toast.error('Failed to reject invite: ' + (errorData.error || 'Unknown error'));
                       }
                     } catch (error) {
                       console.error('Error rejecting invite:', error);
@@ -102,7 +105,7 @@ export function InviteNotifications() {
         clearInterval(checkInterval.current);
       }
     };
-  }, [isLoaded, user, router]);
+  }, [isLoaded, user, router, apiClient]);
 
   return null;
 }

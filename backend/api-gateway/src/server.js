@@ -23,9 +23,7 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
-// Body parsing middleware
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true }));
+// No global body parsing - let individual services handle it
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -79,20 +77,35 @@ app.get('/health/services', async (req, res) => {
 // Proxy configuration
 const proxyOptions = {
   changeOrigin: true,
-  timeout: 30000,
-  proxyTimeout: 30000,
+  timeout: 60000,
+  proxyTimeout: 60000,
+  secure: false,
+  ws: false,
+  followRedirects: true,
+  selfHandleResponse: false,
   onError: (err, req, res) => {
-    console.error('Proxy error:', err);
-    res.status(503).json({ 
-      error: 'Service temporarily unavailable',
-      service: req.originalUrl.split('/')[2] // Extract service name
-    });
+    console.error('Proxy error:', err.message, 'for', req.url);
+    if (!res.headersSent) {
+      const isConnectionError = err.code === 'ECONNREFUSED' || err.message.includes('ECONNREFUSED');
+      res.status(503).json({ 
+        error: isConnectionError ? 'Service is starting up, please try again in a moment' : 'Service temporarily unavailable',
+        service: req.originalUrl.split('/')[2], // Extract service name
+        details: isConnectionError ? 'Service connection refused - likely still starting' : err.message,
+        retryAfter: isConnectionError ? 5 : 30 // Suggest retry time in seconds
+      });
+    }
   },
   onProxyReq: (proxyReq, req, res) => {
     // Forward authentication headers
     if (req.headers.authorization) {
       proxyReq.setHeader('authorization', req.headers.authorization);
     }
+    
+    console.log(`🔄 Proxying: ${req.method} ${req.url} → ${proxyReq.path}`);
+  },
+  onProxyRes: (proxyRes, req, res) => {
+    // Log successful proxy responses
+    console.log(`✅ Proxy response: ${req.method} ${req.url} → ${proxyRes.statusCode}`);
   }
 };
 

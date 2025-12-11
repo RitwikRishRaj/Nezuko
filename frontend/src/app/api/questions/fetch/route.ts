@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-const QUESTION_SERVICE_URL = process.env.QUESTION_SERVICE_URL || 'http://localhost:3001/questions/fetch';
+const API_GATEWAY_URL = process.env.NEXT_PUBLIC_API_GATEWAY_URL || 'http://localhost:8080';
 
 export async function GET(request: Request) {
   try {
@@ -26,13 +26,21 @@ export async function GET(request: Request) {
       params.append('tags', tags);
     }
 
-    const response = await fetch(`${QUESTION_SERVICE_URL}?${params.toString()}`);
+    const response = await fetch(`${API_GATEWAY_URL}/api/questions/fetch?${params.toString()}`);
 
     if (!response.ok) {
       throw new Error('Failed to fetch questions from service');
     }
 
-    const data = await response.json();
+    let data;
+    try {
+      data = await response.json();
+    } catch (jsonError) {
+      // If JSON parsing fails, get the text response for debugging
+      const textResponse = await response.text();
+      console.error('Backend returned non-JSON response:', textResponse);
+      throw new Error('Backend service returned invalid response');
+    }
 
     return NextResponse.json(data);
 
@@ -47,7 +55,7 @@ export async function GET(request: Request) {
     return NextResponse.json(
       { 
         error: isConnectionError 
-          ? `Question service is not available. Please make sure the question service is running at ${QUESTION_SERVICE_URL}`
+          ? `API Gateway is not available. Please make sure the backend services are running at ${API_GATEWAY_URL}`
           : errorMessage,
         problems: []
       },

@@ -1,5 +1,6 @@
 const Joi = require('joi');
 const db = require('../services/database');
+const axios = require('axios');
 
 // Validation schemas
 const createUserSchema = Joi.object({
@@ -7,9 +8,7 @@ const createUserSchema = Joi.object({
   rating: Joi.number().integer().min(0).max(4000).default(0)
 });
 
-const updateRatingSchema = Joi.object({
-  rating: Joi.number().integer().min(0).max(4000).required()
-});
+const updateRatingSchema = Joi.object({}).unknown(true);
 
 class UserController {
   async createUser(req, res, next) {
@@ -97,17 +96,87 @@ class UserController {
 
   async updateRating(req, res, next) {
     try {
-      const { error, value } = updateRatingSchema.validate(req.body);
+      console.log('UpdateRating called for user:', req.userId);
+      
+      const { error, value } = updateRatingSchema.validate(req.body || {});
       if (error) {
+        console.error('Validation error:', error.details[0].message);
         return res.status(400).json({ error: error.details[0].message });
       }
 
-      const { rating } = value;
+      // Get current user to fetch their Codeforces handle
+      console.log('Fetching user from database...');
+      const currentUser = await db.getUserByClerkId(req.userId);
+      console.log('Current user:', currentUser);
+      
+      if (!currentUser) {
+        console.log('User not found in database');
+        return res.status(404).json({ error: 'User not found. Please verify your Codeforces handle first.' });
+      }
+      
+      if (!currentUser.codeforces_handle) {
+        console.log('User has no Codeforces handle');
+        return res.status(404).json({ error: 'No Codeforces handle set. Please verify your handle first.' });
+      }
 
-      const user = await db.updateUserRating(req.userId, rating);
-      res.json({ success: true, user });
+      let newRating = req.body?.rating;
+      
+      // If no rating provided, fetch from Codeforces API
+      if (newRating === undefined) {
+        console.log('Fetching rating from Codeforces for handle:', currentUser.codeforces_handle);
+        try {
+          const cfResponse = await axios.get(
+            `https://codeforces.com/api/user.info?handles=${currentUser.codeforces_handle}`,
+            {
+              timeout: 10000, // 10 second timeout
+              headers: {
+                'User-Agent': 'AlgoGym-UserService/1.0'
+              }
+            }
+          );
+          const cfData = cfResponse.data;
+          
+          if (cfData.status === 'OK' && cfData.result && cfData.result.length > 0) {
+            newRating = cfData.result[0].rating || 0;
+            console.log('Fetched rating from Codeforces:', newRating);
+          } else {
+            newRating = 0; // Default rating if not found
+            console.log('No rating found on Codeforces, using default: 0');
+          }
+        } catch (fetchError) {
+          console.error('Error fetching Codeforces rating:', fetchError.message);
+          
+          if (fetchError.code === 'ECONNABORTED') {
+            console.log('Codeforces API timeout, keeping current rating');
+          } else if (fetchError.response && fetchError.response.status === 429) {
+            console.log('Codeforces API rate limit, keeping current rating');
+          }
+          
+          newRating = currentUser.codeforces_rating || 0; // Keep current rating if fetch fails
+          console.log('Using current rating due to fetch error:', newRating);
+        }
+      }
+
+      const previousRating = currentUser.codeforces_rating || 0;
+      const updated = newRating !== previousRating;
+      
+      console.log('Rating update:', { previousRating, newRating, updated });
+
+      // Update the rating in database
+      console.log('Updating rating in database...');
+      const user = await db.updateUserRating(req.userId, newRating);
+      console.log('Database update successful:', user);
+      
+      res.json({ 
+        success: true, 
+        user,
+        updated,
+        rating: newRating,
+        previousRating
+      });
     } catch (err) {
-      next(err);
+      console.error('UpdateRating error:', err);
+      res.status(500).json({ error: 'Database operation failed: ' + err.message });
     }
   }
 

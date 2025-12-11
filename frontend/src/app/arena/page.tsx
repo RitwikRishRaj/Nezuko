@@ -9,9 +9,12 @@ import { Clock } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { useApiClient } from "@/lib/api-client";
+import { API_CONFIG } from "@/lib/api-config";
 
 export default function ArenaPage() {
   const searchParams = useSearchParams();
+  const apiClient = useApiClient();
   const [problems, setProblems] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [config, setConfig] = useState<any>(null);
@@ -41,13 +44,19 @@ export default function ArenaPage() {
       setIsLoading(true);
       try {
         // Fetch room configuration
-        const configResponse = await fetch(`/api/room/config?roomId=${roomId}`);
+        const configResponse = await apiClient.get(API_CONFIG.ENDPOINTS.ROOM.CONFIG, { roomId });
         
         if (!configResponse.ok) {
           throw new Error('Failed to load room configuration');
         }
 
-        const configData = await configResponse.json();
+        let configData;
+        try {
+          configData = await configResponse.json();
+        } catch (jsonError) {
+          console.error('Failed to parse config response:', jsonError);
+          throw new Error('Failed to load room configuration');
+        }
         const roomConfig = configData.config;
         setConfig(roomConfig);
 
@@ -135,14 +144,20 @@ export default function ArenaPage() {
           params.append('tags', roomConfig.tags.join(','));
         }
 
-        const response = await fetch(`/api/questions/fetch?${params.toString()}`);
+        const response = await apiClient.get(`${API_CONFIG.ENDPOINTS.QUESTIONS.FETCH}?${params.toString()}`);
         
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
           throw new Error(errorData.error || 'Failed to fetch questions');
         }
 
-        const data = await response.json();
+        let data;
+        try {
+          data = await response.json();
+        } catch (jsonError) {
+          console.error('Failed to parse questions response:', jsonError);
+          throw new Error('Server returned invalid response');
+        }
         const fetchedProblems = data.problems || [];
         console.log('Questions fetched successfully:', fetchedProblems.length, 'problems');
         
@@ -165,14 +180,10 @@ export default function ArenaPage() {
         setProblems(fetchedProblems);
 
         // Save problems to database for other participants
-        await fetch('/api/room/config', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ...roomConfig,
-            roomId,
-            problems: fetchedProblems
-          })
+        await apiClient.post(API_CONFIG.ENDPOINTS.ROOM.CONFIG, {
+          ...roomConfig,
+          roomId,
+          problems: fetchedProblems
         });
 
       } catch (error) {

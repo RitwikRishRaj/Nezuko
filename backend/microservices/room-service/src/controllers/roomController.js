@@ -33,8 +33,17 @@ class RoomController {
   // Room Configuration
   async createOrUpdateConfig(req, res, next) {
     try {
+      console.log('CreateOrUpdateConfig called with:', { body: req.body, userId: req.userId });
+      
+      // Check if user is authenticated
+      if (!req.userId) {
+        console.error('No userId found - authentication failed');
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+      
       const { error, value } = roomConfigSchema.validate(req.body);
       if (error) {
+        console.error('Config validation error:', error.details[0].message);
         return res.status(400).json({ error: error.details[0].message });
       }
 
@@ -74,9 +83,13 @@ class RoomController {
         configData.use_custom_links = useCustomLinks;
       }
 
+      console.log('Creating/updating config with data:', configData);
       const config = await db.createOrUpdateRoomConfig(configData);
+      console.log('Config created/updated successfully:', config);
+      
       res.json({ success: true, config });
     } catch (err) {
+      console.error('CreateOrUpdateConfig error:', { message: err.message, code: err.code, details: err.details });
       next(err);
     }
   }
@@ -104,8 +117,11 @@ class RoomController {
   // Room Invitations
   async createInvite(req, res, next) {
     try {
+      console.log('CreateInvite called with:', { body: req.body, userId: req.userId });
+      
       const { error, value } = inviteSchema.validate(req.body);
       if (error) {
+        console.error('Validation error:', error.details[0].message);
         return res.status(400).json({ error: error.details[0].message });
       }
 
@@ -113,24 +129,80 @@ class RoomController {
 
       // Prevent self-invitation
       if (invitedUserId === req.userId) {
+        console.log('Self-invitation attempt blocked');
         return res.status(400).json({ error: 'Cannot invite yourself' });
+      }
+
+      // Get inviter's handle from user service
+      let inviterHandle = null;
+      try {
+        const userServiceUrl = process.env.USER_SERVICE_URL || 'http://localhost:3002';
+        console.log('Fetching inviter details from:', `${userServiceUrl}/api/user/details?clerkId=${req.userId}`);
+        const userResponse = await fetch(`${userServiceUrl}/api/user/details?clerkId=${req.userId}`);
+        console.log('Inviter fetch response status:', userResponse.status);
+        
+        if (userResponse.ok) {
+          const userData = await userResponse.json();
+          console.log('Inviter user data:', userData);
+          inviterHandle = userData.codeforces_handle;
+        } else {
+          const errorText = await userResponse.text();
+          console.error('Failed to fetch inviter details:', errorText);
+        }
+      } catch (fetchError) {
+        console.error('Failed to fetch inviter handle:', fetchError);
+      }
+
+      if (!inviterHandle) {
+        console.error('Could not get inviter handle, aborting invite');
+        return res.status(400).json({ error: 'Could not find inviter profile. Please make sure you have verified your Codeforces handle.' });
+      }
+
+      // Get invited user's handle as well
+      let invitedHandle = null;
+      try {
+        const userServiceUrl = process.env.USER_SERVICE_URL || 'http://localhost:3002';
+        console.log('Fetching invited user details from:', `${userServiceUrl}/api/user/details?clerkId=${invitedUserId}`);
+        const userResponse = await fetch(`${userServiceUrl}/api/user/details?clerkId=${invitedUserId}`);
+        console.log('Invited user fetch response status:', userResponse.status);
+        
+        if (userResponse.ok) {
+          const userData = await userResponse.json();
+          console.log('Invited user data:', userData);
+          invitedHandle = userData.codeforces_handle;
+        } else {
+          const errorText = await userResponse.text();
+          console.error('Failed to fetch invited user details:', errorText);
+        }
+      } catch (fetchError) {
+        console.error('Failed to fetch invited user handle:', fetchError);
+      }
+
+      if (!invitedHandle) {
+        console.error('Could not get invited user handle, aborting invite');
+        return res.status(400).json({ error: 'Could not find invited user profile. The user may not have verified their Codeforces handle.' });
       }
 
       const inviteData = {
         room_id: roomId,
         inviter_clerk_id: req.userId,
         invited_clerk_id: invitedUserId,
+        inviter_handle: inviterHandle,
+        invited_handle: invitedHandle,
         slot,
         slot_type: slotType,
         room_mode: roomMode,
         status: 'pending',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        created_at: new Date().toISOString()
       };
 
+      console.log('Creating invite with data:', inviteData);
       const invite = await db.createRoomInvite(inviteData);
+      console.log('Invite created successfully:', invite);
+      
       res.json({ success: true, invite });
     } catch (err) {
+      console.error('CreateInvite error:', { code: err.code, message: err.message, details: err.details });
       if (err.code === '23505') {
         return res.status(409).json({ error: 'User already invited to this slot' });
       }
@@ -172,15 +244,22 @@ class RoomController {
 
   async removeUser(req, res, next) {
     try {
+      console.log('RemoveUser called with:', { body: req.body, userId: req.userId });
+      
       const { roomId, slot } = req.body;
 
       if (!roomId || !slot) {
+        console.error('Missing roomId or slot');
         return res.status(400).json({ error: 'Room ID and slot are required' });
       }
 
+      console.log('Removing user from room:', roomId, 'slot:', slot);
       await db.removeRoomInvite(roomId, slot);
+      console.log('User removed successfully');
+      
       res.json({ success: true, message: 'User removed from room' });
     } catch (err) {
+      console.error('RemoveUser error:', err);
       next(err);
     }
   }
@@ -215,14 +294,13 @@ class RoomController {
       }
 
       const gameStartTime = new Date().toISOString();
-      const gameData = {
-        room_id: roomId,
-        started_by: req.userId,
-        started_at: gameStartTime,
-        status: 'started'
-      };
-
-      await db.createGameStart(gameData);
+      
+      // Update room_config with game start info
+      await db.updateRoomGameStatus(roomId, {
+        game_status: 'started',
+        game_started_by: req.userId,
+        game_started_at: gameStartTime
+      });
 
       const participants = invites.filter(invite => invite.status === 'accepted');
 

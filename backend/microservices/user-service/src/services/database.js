@@ -49,7 +49,7 @@ class UserDatabaseService {
   async searchUsersByHandle(handle) {
     const { data, error } = await this.supabase
       .from('users')
-      .select('clerk_id, codeforces_handle, rating')
+      .select('clerk_id, codeforces_handle, codeforces_rating')
       .ilike('codeforces_handle', `%${handle}%`)
       .limit(10);
 
@@ -58,17 +58,24 @@ class UserDatabaseService {
   }
 
   async updateUserRating(clerkId, rating) {
+    console.log('Database: Updating rating for user:', clerkId, 'to rating:', rating);
+    
     const { data, error } = await this.supabase
       .from('users')
       .update({
-        rating,
+        codeforces_rating: rating,
         updated_at: new Date().toISOString()
       })
       .eq('clerk_id', clerkId)
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error('Database error in updateUserRating:', error);
+      throw new Error(`Database update failed: ${error.message}`);
+    }
+    
+    console.log('Database: Rating updated successfully:', data);
     return data;
   }
 

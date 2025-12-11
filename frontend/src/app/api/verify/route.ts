@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-const VERIFICATION_SERVICE_URL = process.env.VERIFICATION_SERVICE_URL || 'http://localhost:3001/verify-codeforces';
+const API_GATEWAY_URL = process.env.NEXT_PUBLIC_API_GATEWAY_URL || 'http://localhost:8080';
 
 export async function POST(request: Request) {
   try {
@@ -13,7 +13,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const response = await fetch(VERIFICATION_SERVICE_URL, {
+    const response = await fetch(`${API_GATEWAY_URL}/api/verify`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -21,7 +21,15 @@ export async function POST(request: Request) {
       body: JSON.stringify({ handle: handle.trim() }),
     });
 
-    const data = await response.json();
+    let data;
+    try {
+      data = await response.json();
+    } catch (jsonError) {
+      // If JSON parsing fails, get the text response for debugging
+      const textResponse = await response.text();
+      console.error('Backend returned non-JSON response:', textResponse);
+      throw new Error('Backend service returned invalid response');
+    }
 
     if (!response.ok) {
       return NextResponse.json(
@@ -51,7 +59,7 @@ export async function POST(request: Request) {
       { 
         success: false, 
         error: isConnectionError 
-          ? `Verification service is not available. Please make sure the verification service is running. Expected URL: ${VERIFICATION_SERVICE_URL}`
+          ? `API Gateway is not available. Please make sure the backend services are running at ${API_GATEWAY_URL}`
           : errorMessage
       },
       { status: 500 }

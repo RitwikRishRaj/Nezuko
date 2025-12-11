@@ -21,7 +21,7 @@ const errorHandler = (err, req, res, next) => {
         error.status = 404;
         break;
       case '23505':
-        error.message = 'Resource already exists';
+        error.message = 'User already invited to this slot';
         error.status = 409;
         break;
       case '23503':
@@ -29,8 +29,9 @@ const errorHandler = (err, req, res, next) => {
         error.status = 400;
         break;
       default:
-        error.message = 'Database operation failed';
+        error.message = `Database operation failed: ${err.message || err.code}`;
         error.status = 500;
+        console.error('Unhandled database error:', { code: err.code, message: err.message, details: err.details });
     }
   }
 

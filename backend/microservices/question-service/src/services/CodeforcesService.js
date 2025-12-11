@@ -9,10 +9,33 @@ const seededRandom = (seed) => {
 exports.getQuestionsFromCodeforces = async ({ rating, minRating, maxRating, tags, count }) => {
   const url = "https://codeforces.com/api/problemset.problems";
 
-  const { data } = await axios.get(url);
+  let data;
+  try {
+    const response = await axios.get(url, {
+      timeout: 10000, // 10 second timeout
+      headers: {
+        'User-Agent': 'AlgoGym-QuestionService/1.0'
+      }
+    });
+    data = response.data;
+  } catch (error) {
+    console.error('Codeforces API request failed:', error.message);
+    
+    if (error.code === 'ECONNABORTED') {
+      throw new Error('Codeforces API request timed out. Please try again later.');
+    } else if (error.response) {
+      // Server responded with error status
+      throw new Error(`Codeforces API returned ${error.response.status}: ${error.response.statusText}`);
+    } else if (error.request) {
+      // Network error
+      throw new Error('Unable to reach Codeforces API. Please check your internet connection.');
+    } else {
+      throw new Error('Failed to fetch problems from Codeforces API');
+    }
+  }
 
   if (data.status !== "OK") {
-    throw new Error("Codeforces API error");
+    throw new Error(`Codeforces API error: ${data.comment || 'Unknown error'}`);
   }
 
   let problems = data.result.problems;

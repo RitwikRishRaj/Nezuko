@@ -10,6 +10,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import Link from 'next/link';
+import { useApiClient } from '@/lib/api-client';
+import { API_CONFIG } from '@/lib/api-config';
 
 export default function VerifyPage() {
   const [handle, setHandle] = useState('');
@@ -17,6 +19,7 @@ export default function VerifyPage() {
   const [verificationStatus, setVerificationStatus] = useState<'idle' | 'verifying' | 'success' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
   const [showInstructions, setShowInstructions] = useState(false);
+  const apiClient = useApiClient();
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -32,7 +35,16 @@ export default function VerifyPage() {
     try {
       // First, check if the handle exists on Codeforces
       const cfCheck = await fetch(`https://codeforces.com/api/user.info?handles=${handle.trim()}`);
-      const cfData = await cfCheck.json();
+      
+      let cfData;
+      try {
+        cfData = await cfCheck.json();
+      } catch (jsonError) {
+        // If JSON parsing fails, it might be a rate limit or other error
+        const textResponse = await cfCheck.text();
+        console.error('Codeforces API returned non-JSON response:', textResponse);
+        throw new Error('Codeforces API is temporarily unavailable. Please try again later.');
+      }
       
       if (cfData.status === 'FAILED') {
         throw new Error('Codeforces handle not found');
@@ -47,7 +59,13 @@ export default function VerifyPage() {
         body: JSON.stringify({ handle: handle.trim() }),
       });
 
-      const data = await response.json();
+      let data;
+      try {
+        data = await response.json();
+      } catch (jsonError) {
+        console.error('Failed to parse verify response:', jsonError);
+        throw new Error('Server returned invalid response');
+      }
 
       if (!response.ok) {
         throw new Error(data.error || 'Verification failed');
@@ -63,21 +81,15 @@ export default function VerifyPage() {
       toast.success('Codeforces handle verified successfully!');
       
       // Save user to database with rating
-      const createUserResponse = await fetch('/api/user/create', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
-          codeforcesHandle: handle.trim(),
-          rating: data.rating || null
-        }),
+      const createUserResponse = await apiClient.post(API_CONFIG.ENDPOINTS.USER.CREATE, {
+        codeforcesHandle: handle.trim(),
+        rating: data.rating || null
       });
 
       if (!createUserResponse.ok) {
-        const errorData = await createUserResponse.json();
+        const errorData = await createUserResponse.json().catch(() => ({ error: 'Unknown error' }));
         console.error('Failed to create user:', errorData);
-        throw new Error('Failed to save user profile');
+        throw new Error('Failed to save user profile: ' + (errorData.error || 'Unknown error'));
       }
       
       // Redirect to dashboard immediately after user is created

@@ -28,7 +28,7 @@ export default function RootLayout({
       signUpFallbackRedirectUrl="/verify"
     >
       <html lang="en" className={`${ibmPlexSans.variable} font-sans`}>
-        <body className="antialiased">
+        <body className="antialiased" suppressHydrationWarning={true}>
           <Toaster />
           <InviteNotifications />
           {children}

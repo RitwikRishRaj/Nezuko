@@ -5,14 +5,6 @@ const path = require('path');
 
 const services = [
   {
-    name: 'API Gateway',
-    command: 'npm',
-    args: ['run', 'dev'],
-    cwd: path.join(__dirname, 'api-gateway'),
-    port: 8080,
-    color: '\x1b[36m' // Cyan
-  },
-  {
     name: 'Room Service',
     command: 'npm',
     args: ['run', 'dev'],
@@ -43,6 +35,14 @@ const services = [
     cwd: path.join(__dirname, 'microservices', 'verify-codeforces-service'),
     port: 3004,
     color: '\x1b[34m' // Blue
+  },
+  {
+    name: 'API Gateway',
+    command: 'npm',
+    args: ['run', 'dev'],
+    cwd: path.join(__dirname, 'api-gateway'),
+    port: 8080,
+    color: '\x1b[36m' // Cyan
   }
 ];
 
@@ -98,7 +98,7 @@ console.log('\x1b[1m🎯 AlgoGym Microservices Startup\x1b[0m\n');
 services.forEach((service, index) => {
   setTimeout(() => {
     startService(service);
-  }, index * 2000); // Stagger startup by 2 seconds
+  }, index * 3000); // Stagger startup by 3 seconds to give more time
 });
 
 // Show status after all services have had time to start

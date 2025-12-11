@@ -40,13 +40,20 @@ app.get('/health', (req, res) => {
 });
 
 // Public routes (no auth required)
-app.get('/api/user/search', userRoutes);
+const publicRouter = express.Router();
+publicRouter.get('/search', require('./controllers/userController').searchUsers);
+publicRouter.get('/details', require('./controllers/userController').getUserDetails);
+app.use('/api/user', publicRouter);
 
 // Authentication middleware for protected routes
 app.use('/api', authMiddleware);
 
-// Protected routes
-app.use('/api/user', userRoutes);
+// Protected routes (require auth)
+const protectedRouter = express.Router();
+protectedRouter.post('/create', require('./controllers/userController').createUser);
+protectedRouter.post('/update-rating', require('./controllers/userController').updateRating);
+protectedRouter.get('/exists', require('./controllers/userController').checkUserExists);
+app.use('/api/user', protectedRouter);
 
 // Error handling middleware
 app.use(errorHandler);

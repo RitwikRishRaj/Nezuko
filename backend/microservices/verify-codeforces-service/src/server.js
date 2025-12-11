@@ -41,12 +41,43 @@ app.post("/api/verify", async (req, res) => {
 
   try {
     // Fetch recent submissions of the user
-    const response = await axios.get(
-      `https://codeforces.com/api/user.status?handle=${handle}&from=1&count=20`
-    );
+    let response;
+    try {
+      response = await axios.get(
+        `https://codeforces.com/api/user.status?handle=${handle}&from=1&count=20`,
+        {
+          timeout: 10000, // 10 second timeout
+          headers: {
+            'User-Agent': 'AlgoGym-VerifyService/1.0'
+          }
+        }
+      );
+    } catch (apiError) {
+      console.error('Codeforces API request failed:', apiError.message);
+      
+      if (apiError.code === 'ECONNABORTED') {
+        return res.status(503).json({ 
+          error: "Codeforces API request timed out. Please try again later." 
+        });
+      } else if (apiError.response && apiError.response.status === 429) {
+        return res.status(429).json({ 
+          error: "Too many requests to Codeforces API. Please wait a moment and try again." 
+        });
+      } else if (apiError.response) {
+        return res.status(503).json({ 
+          error: `Codeforces API returned ${apiError.response.status}. Please try again later.` 
+        });
+      } else {
+        return res.status(503).json({ 
+          error: "Unable to reach Codeforces API. Please check your internet connection and try again." 
+        });
+      }
+    }
 
     if (response.data.status !== "OK") {
-      return res.status(400).json({ error: "Unable to fetch submissions" });
+      return res.status(400).json({ 
+        error: `Codeforces API error: ${response.data.comment || 'Unable to fetch submissions'}` 
+      });
     }
 
     const submissions = response.data.result;
@@ -64,14 +95,20 @@ app.post("/api/verify", async (req, res) => {
       let rating = null;
       try {
         const userInfoResponse = await axios.get(
-          `https://codeforces.com/api/user.info?handles=${handle}`
+          `https://codeforces.com/api/user.info?handles=${handle}`,
+          {
+            timeout: 10000,
+            headers: {
+              'User-Agent': 'AlgoGym-VerifyService/1.0'
+            }
+          }
         );
         if (userInfoResponse.data.status === "OK" && userInfoResponse.data.result.length > 0) {
           rating = userInfoResponse.data.result[0].rating || null;
         }
       } catch (ratingError) {
         console.error("Failed to fetch rating:", ratingError.message);
-        // Continue without rating if fetch fails
+        // Continue without rating if fetch fails - this is not critical for verification
       }
 
       return res.json({

@@ -17,6 +17,8 @@ import LinkEditor from "@/components/link-editor"
 import AnimatedNumberCountdown from "@/components/countdown-number"
 import { useUser } from "@clerk/nextjs"
 import { toast } from "sonner"
+import { useApiClient } from "@/lib/api-client"
+import { API_CONFIG } from "@/lib/api-config"
 
 type CompetitionType = 'icpc' | 'ioi' | 'long';
 
@@ -67,6 +69,7 @@ const AVAILABLE_TAGS: Tag[] = [
 
 export default function RoomPage() {
   const { user } = useUser();
+  const apiClient = useApiClient();
   const searchParams = useSearchParams();
   
   // Get or generate room ID
@@ -157,9 +160,16 @@ export default function RoomPage() {
       
       try {
         // Check if there are accepted invites for this room
-        const response = await fetch(`/api/room/state?roomId=${roomId}`);
+        const response = await apiClient.get(API_CONFIG.ENDPOINTS.ROOM.STATE, { roomId });
         if (response.ok) {
-          const data = await response.json();
+          let data;
+          try {
+            data = await response.json();
+          } catch (jsonError) {
+            console.error('Failed to parse room state response:', jsonError);
+            toast.error('Failed to load room data');
+            return;
+          }
           console.log('📦 Room state response:', {
             totalInvites: data.invites?.length,
             acceptedInvites: data.invites?.filter((i: any) => i.status === 'accepted').length,
@@ -188,9 +198,15 @@ export default function RoomPage() {
           // Fetch creator's info if we don't have it yet
           if (creatorClerkId && !roomCreatorInfo) {
             try {
-              const creatorResponse = await fetch(`/api/user/details?clerkId=${creatorClerkId}`);
+              const creatorResponse = await apiClient.get(API_CONFIG.ENDPOINTS.USER.DETAILS, { clerkId: creatorClerkId });
               if (creatorResponse.ok) {
-                const creatorData = await creatorResponse.json();
+                let creatorData;
+                try {
+                  creatorData = await creatorResponse.json();
+                } catch (jsonError) {
+                  console.error('Failed to parse creator data:', jsonError);
+                  return;
+                }
                 setRoomCreatorInfo({
                   clerk_id: creatorClerkId,
                   codeforces_handle: creatorData.codeforces_handle || 'Unknown'
@@ -227,9 +243,15 @@ export default function RoomPage() {
           
           for (const inv of acceptedInvites) {
             try {
-              const userResponse = await fetch(`/api/user/details?clerkId=${inv.invited_clerk_id}`);
+              const userResponse = await apiClient.get(API_CONFIG.ENDPOINTS.USER.DETAILS, { clerkId: inv.invited_clerk_id });
               if (userResponse.ok) {
-                const userData = await userResponse.json();
+                let userData;
+                try {
+                  userData = await userResponse.json();
+                } catch (jsonError) {
+                  console.error('Failed to parse user data:', jsonError);
+                  continue;
+                }
                 newInvitedUsers[inv.slot] = {
                   clerk_id: inv.invited_clerk_id,
                   codeforces_handle: userData.codeforces_handle || 'Unknown'
@@ -321,9 +343,15 @@ export default function RoomPage() {
 
         // Check if game has already started
         try {
-          const configResponse = await fetch(`/api/room/config?roomId=${roomId}`);
+          const configResponse = await apiClient.get(API_CONFIG.ENDPOINTS.ROOM.CONFIG, { roomId });
           if (configResponse.ok) {
-            const configData = await configResponse.json();
+            let configData;
+            try {
+              configData = await configResponse.json();
+            } catch (jsonError) {
+              console.error('Failed to parse room config:', jsonError);
+              return;
+            }
             const roomConfig = configData.config;
             
             // If game has started and current user didn't start it, redirect to arena
@@ -362,28 +390,19 @@ export default function RoomPage() {
     
     const channel = supabase
       .channel(`room_${roomId}_${Date.now()}`) // Unique channel name
+
       .on(
         'postgres_changes',
         {
-          event: 'DELETE',
+          event: 'UPDATE',
           schema: 'public',
-          table: 'room_invites'
-          // Removed filter - listen to ALL deletes
+          table: 'room_invites',
+          filter: `room_id=eq.${roomId}`
         },
         (payload) => {
-          console.log('🔴🔴🔴 REALTIME DELETE EVENT:', payload);
-          console.log('Deleted record:', payload.old);
-          console.log('Deleted room_id:', payload.old?.room_id);
-          console.log('Current room_id:', roomId);
-          
-          // Check if this delete is for our room
-          if (payload.old && payload.old.room_id === roomId) {
-            console.log('✅ Delete is for our room');
-            
-            // Check if the deleted invite was for current user
-            if (payload.old.invited_clerk_id === user?.id) {
-              console.log('🚨 MY INVITE WAS DELETED! I was kicked!');
-              
+          try {
+            // Check if someone was kicked (status changed to 'kicked')
+            if (payload.new && payload.new.status === 'kicked' && payload.new.invited_clerk_id === user?.id) {
               toast.error('You have been removed from the room', {
                 description: 'Redirecting to dashboard...',
                 duration: 1500
@@ -393,26 +412,12 @@ export default function RoomPage() {
                 window.location.href = '/dashboard';
               }, 1500);
             } else {
-              // Someone else was kicked, just reload state
-              console.log('Someone else was kicked, reloading state...');
+              // Regular update, reload state
               loadRoomState();
             }
-          } else {
-            console.log('❌ Delete is for a different room, ignoring');
+          } catch (error) {
+            console.error('Error handling UPDATE event:', error);
           }
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'room_invites',
-          filter: `room_id=eq.${roomId}`
-        },
-        (payload) => {
-          console.log('🔴 REALTIME UPDATE EVENT:', payload);
-          loadRoomState();
         }
       )
       .on(
@@ -424,62 +429,15 @@ export default function RoomPage() {
           filter: `room_id=eq.${roomId}`
         },
         (payload) => {
-          console.log('🔴 REALTIME INSERT EVENT:', payload);
-          loadRoomState();
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'room_game_start',
-          filter: `room_id=eq.${roomId}`
-        },
-        (payload) => {
-          console.log('🎮 GAME START EVENT:', payload);
-          
-          // Only redirect if current user is not the one who started the game
-          if (payload.new && payload.new.started_by !== user?.id) {
-            console.log('🚀 Game started by host, redirecting to arena...');
-            
-            toast.success('Game started by host!', {
-              description: 'Redirecting to arena...',
-              duration: 2000
-            });
-            
-            setTimeout(() => {
-              window.location.href = `/arena?roomId=${roomId}`;
-            }, 1000);
+          try {
+            console.log('🔴 REALTIME INSERT EVENT:', payload);
+            loadRoomState();
+          } catch (error) {
+            console.error('Error handling INSERT event:', error);
           }
         }
       )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'room_game_start',
-          filter: `room_id=eq.${roomId}`
-        },
-        (payload) => {
-          console.log('🎮 GAME START UPDATE EVENT:', payload);
-          
-          // Only redirect if current user is not the one who started the game
-          if (payload.new && payload.new.started_by !== user?.id && payload.new.status === 'started') {
-            console.log('🚀 Game started by host, redirecting to arena...');
-            
-            toast.success('Game started by host!', {
-              description: 'Redirecting to arena...',
-              duration: 2000
-            });
-            
-            setTimeout(() => {
-              window.location.href = `/arena?roomId=${roomId}`;
-            }, 1000);
-          }
-        }
-      )
+
       .on(
         'postgres_changes',
         {
@@ -489,20 +447,24 @@ export default function RoomPage() {
           filter: `room_id=eq.${roomId}`
         },
         (payload) => {
-          console.log('🔴 ROOM CONFIG UPDATE EVENT:', payload);
-          
-          // Check if game was started
-          if (payload.new && payload.new.game_status === 'started' && payload.new.game_started_by !== user?.id) {
-            console.log('🚀 Game started by host (via room_config), redirecting to arena...');
+          try {
+            console.log('🔴 ROOM CONFIG UPDATE EVENT:', payload);
             
-            toast.success('Game started by host!', {
-              description: 'Redirecting to arena...',
-              duration: 2000
-            });
-            
-            setTimeout(() => {
-              window.location.href = `/arena?roomId=${roomId}`;
-            }, 1000);
+            // Check if game was started
+            if (payload.new && payload.new.game_status === 'started' && payload.new.game_started_by !== user?.id) {
+              console.log('🚀 Game started by host (via room_config), redirecting to arena...');
+              
+              toast.success('Game started by host!', {
+                description: 'Redirecting to arena...',
+                duration: 2000
+              });
+              
+              setTimeout(() => {
+                window.location.href = `/arena?roomId=${roomId}`;
+              }, 1000);
+            }
+          } catch (error) {
+            console.error('Error handling ROOM CONFIG UPDATE event:', error);
           }
         }
       )
@@ -511,15 +473,42 @@ export default function RoomPage() {
         if (status === 'SUBSCRIBED') {
           console.log('✅ Realtime SUBSCRIBED successfully');
         } else if (status === 'CHANNEL_ERROR') {
-          console.error('❌ Realtime CHANNEL_ERROR');
+          console.error('❌ Realtime CHANNEL_ERROR - This is usually due to:');
+          console.error('  1. Row Level Security (RLS) blocking access');
+          console.error('  2. Realtime not enabled on tables');
+          console.error('  3. Network connectivity issues');
+          console.error('  → Falling back to polling for updates');
+          
+          // Set up basic polling fallback when realtime fails
+          const pollInterval = setInterval(async () => {
+            try {
+              await loadRoomData();
+            } catch (error) {
+              console.error('Polling error:', error);
+            }
+          }, 5000); // Poll every 5 seconds
+          
+          // Store interval ID for cleanup
+          (window as any).roomPollingInterval = pollInterval;
+          
         } else if (status === 'TIMED_OUT') {
-          console.error('❌ Realtime TIMED_OUT');
+          console.error('❌ Realtime TIMED_OUT - Connection timeout');
+          console.error('  → This might be due to network issues');
+        } else if (status === 'CLOSED') {
+          console.log('🔴 Realtime connection CLOSED');
         }
       });
     
     return () => {
       console.log('🔴 Cleaning up realtime subscription');
       supabase.removeChannel(channel);
+      
+      // Clean up polling fallback if it exists
+      if ((window as any).roomPollingInterval) {
+        clearInterval((window as any).roomPollingInterval);
+        (window as any).roomPollingInterval = null;
+        console.log('🔴 Cleaned up polling fallback');
+      }
     };
   }, [user, roomId, searchParams]);
   
@@ -537,10 +526,9 @@ export default function RoomPage() {
       console.log('Searching for:', query);
       
       try {
-        const url = `/api/user/search?handle=${encodeURIComponent(query.trim())}`;
-        console.log('Fetching:', url);
+        console.log('Searching for handle:', query.trim());
         
-        const response = await fetch(url);
+        const response = await apiClient.get(API_CONFIG.ENDPOINTS.USER.SEARCH, { handle: query.trim() });
         console.log('Response status:', response.status, response.statusText);
         
         // Check if response is JSON
@@ -592,23 +580,29 @@ export default function RoomPage() {
       const slotType = slot.startsWith('host') ? 'host' : 'opponent';
       
       // Send invite via API
-      const response = await fetch('/api/room/invite', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          invitedUserId: selectedUser.clerk_id,
-          roomId,
-          slot,
-          slotType,
-          roomMode
-        })
+      const response = await apiClient.post(API_CONFIG.ENDPOINTS.ROOM.INVITE, {
+        invitedUserId: selectedUser.clerk_id,
+        roomId,
+        slot,
+        slotType,
+        roomMode
       });
 
-      const data = await response.json();
+      let data;
+      try {
+        data = await response.json();
+      } catch (jsonError) {
+        console.error('Failed to parse invite response as JSON:', jsonError);
+        const textResponse = await response.text();
+        console.error('Raw response:', textResponse);
+        throw new Error('Server returned invalid response');
+      }
+      
       console.log('Invite response:', { status: response.status, data });
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to send invite');
+        console.error('Invite failed:', { status: response.status, error: data.error, fullData: data });
+        throw new Error(data.error || `Failed to send invite (${response.status})`);
       }
 
       // Update local state
@@ -640,17 +634,23 @@ export default function RoomPage() {
     }
 
     try {
-      const response = await fetch('/api/room/invites/remove', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roomId, slot })
+      const response = await apiClient.post(API_CONFIG.ENDPOINTS.ROOM.INVITES_REMOVE, {
+        roomId,
+        slot
       });
 
       if (!response.ok) {
         throw new Error('Failed to remove user');
       }
 
-      const data = await response.json();
+      let data;
+      try {
+        data = await response.json();
+      } catch (jsonError) {
+        console.error('Failed to parse remove user response:', jsonError);
+        toast.error('User removed but response was invalid');
+        return;
+      }
       console.log('✅ User removed successfully from slot:', slot, data);
 
       // Update local state immediately
@@ -727,34 +727,48 @@ export default function RoomPage() {
       }
 
       // Save room configuration
-      const configResponse = await fetch('/api/room/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          roomId,
-          questionCount,
-          minutes,
-          format: competitionType,
-          minRating: ratingRange.min,
-          maxRating: ratingRange.max,
-          tags: isRandom ? [] : selectedTags.map(t => t.name),
-          isRandomTags: isRandom,
-          problems: null, // Will be fetched in arena
-          customProblemLinks: validCustomLinks.length > 0 ? validCustomLinks : null,
-          useCustomLinks: showProblemLinks && validCustomLinks.length > 0
-        })
-      });
+      const configPayload = {
+        roomId,
+        questionCount,
+        minutes,
+        format: competitionType,
+        minRating: ratingRange.min,
+        maxRating: ratingRange.max,
+        tags: isRandom ? [] : selectedTags.map(t => t.name),
+        isRandomTags: isRandom,
+        problems: null, // Will be fetched in arena
+        customProblemLinks: validCustomLinks.length > 0 ? validCustomLinks : null,
+        useCustomLinks: showProblemLinks && validCustomLinks.length > 0
+      };
+      
+      console.log('Sending config payload:', configPayload);
+      const configResponse = await apiClient.post(API_CONFIG.ENDPOINTS.ROOM.CONFIG, configPayload);
 
       if (!configResponse.ok) {
-        const errorData = await configResponse.json().catch(() => ({ error: 'Unknown error' }));
+        let errorData;
+        let responseText;
+        try {
+          errorData = await configResponse.json();
+        } catch (jsonError) {
+          try {
+            responseText = await configResponse.text();
+            console.error('Non-JSON response:', responseText);
+          } catch (textError) {
+            console.error('Could not read response:', textError);
+          }
+          errorData = { error: 'Invalid response from server' };
+        }
+        
         console.error('Config save failed:', {
           status: configResponse.status,
+          statusText: configResponse.statusText,
           error: errorData,
-          customLinks: validCustomLinks,
-          useCustomLinks: showProblemLinks && validCustomLinks.length > 0
+          responseText,
+          payload: configPayload
         });
+        
         toast.error('Failed to save room configuration', {
-          description: errorData.error || `Server error: ${configResponse.status}`,
+          description: errorData.error || responseText || `Server error: ${configResponse.status}`,
           duration: 5000
         });
         return;
@@ -763,10 +777,8 @@ export default function RoomPage() {
       console.log('Room configuration saved successfully');
 
       // Start the game and notify all participants
-      const startGameResponse = await fetch('/api/room/start-game', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roomId })
+      const startGameResponse = await apiClient.post(API_CONFIG.ENDPOINTS.ROOM.START_GAME, {
+        roomId
       });
 
       if (!startGameResponse.ok) {
@@ -779,7 +791,14 @@ export default function RoomPage() {
         return;
       }
 
-      const startGameData = await startGameResponse.json();
+      let startGameData;
+      try {
+        startGameData = await startGameResponse.json();
+      } catch (jsonError) {
+        console.error('Failed to parse start game response:', jsonError);
+        toast.error('Game started but response was invalid');
+        return;
+      }
       console.log('Game started successfully:', startGameData);
 
       toast.success('Game started!', {
@@ -810,13 +829,18 @@ export default function RoomPage() {
             
             toast.loading('Discarding room...');
             
-            const response = await fetch('/api/room/discard', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ roomId })
+            const response = await apiClient.post(API_CONFIG.ENDPOINTS.ROOM.DISCARD, {
+              roomId
             });
 
-            const data = await response.json();
+            let data;
+            try {
+              data = await response.json();
+            } catch (jsonError) {
+              console.error('Failed to parse discard room response:', jsonError);
+              toast.error('Room discarded but response was invalid');
+              return;
+            }
 
             if (!response.ok) {
               throw new Error(data.error || 'Failed to discard room');
@@ -1381,7 +1405,7 @@ export default function RoomPage() {
                   <div className="space-y-2 overflow-y-auto max-h-80 pr-2 custom-scrollbar">
                     {searchResults.map((result, index) => (
                       <motion.button
-                        key={result.id}
+                        key={result.clerk_id || result.id || `search-result-${index}`}
                         initial={{ opacity: 0, x: -20 }}
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ delay: index * 0.05 }}
