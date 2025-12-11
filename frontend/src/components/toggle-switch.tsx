@@ -6,6 +6,7 @@ interface ToggleSwitchProps {
   checked?: boolean;
   onChange?: (event: React.ChangeEvent<HTMLInputElement>) => void;
   className?: string;
+  disabled?: boolean;
 }
 
 const SwitchContainer = styled.label`
@@ -15,16 +16,17 @@ const SwitchContainer = styled.label`
   height: 24px;
 `;
 
-const Slider = styled.span`
+const Slider = styled.span<{ disabled?: boolean }>`
   position: absolute;
-  cursor: pointer;
+  cursor: ${props => props.disabled ? 'not-allowed' : 'pointer'};
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: #4B5563;
+  background-color: ${props => props.disabled ? '#374151' : '#4B5563'};
   transition: .4s;
   border-radius: 24px;
+  opacity: ${props => props.disabled ? 0.5 : 1};
 
   &:before {
     position: absolute;
@@ -33,7 +35,7 @@ const Slider = styled.span`
     width: 18px;
     left: 3px;
     bottom: 3px;
-    background-color: white;
+    background-color: ${props => props.disabled ? '#9CA3AF' : 'white'};
     transition: .4s;
     border-radius: 50%;
   }
@@ -57,10 +59,11 @@ const ToggleSwitch: React.FC<ToggleSwitchProps> = ({
   name = 'toggle', 
   checked = false, 
   onChange,
-  className = ''
+  className = '',
+  disabled = false
 }) => {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (onChange) {
+    if (onChange && !disabled) {
       onChange(e);
     }
   };
@@ -74,8 +77,9 @@ const ToggleSwitch: React.FC<ToggleSwitchProps> = ({
           checked={checked}
           onChange={handleChange}
           aria-label={name}
+          disabled={disabled}
         />
-        <Slider />
+        <Slider disabled={disabled} />
       </SwitchContainer>
     </div>
   );

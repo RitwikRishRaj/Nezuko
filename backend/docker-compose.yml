@@ -1,0 +1,79 @@
+version: '3.8'
+
+services:
+  api-gateway:
+    build: ./api-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - ROOM_SERVICE_URL=http://room-service:3001
+      - USER_SERVICE_URL=http://user-service:3002
+      - QUESTION_SERVICE_URL=http://question-service:3003
+      - VERIFY_SERVICE_URL=http://verify-service:3004
+      - FRONTEND_URL=http://localhost:3000
+      - CLERK_SECRET_KEY=${CLERK_SECRET_KEY}
+    depends_on:
+      - room-service
+      - user-service
+      - question-service
+      - verify-service
+    networks:
+      - algogym-network
+
+  room-service:
+    build: ./microservices/room-service
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - CLERK_SECRET_KEY=${CLERK_SECRET_KEY}
+      - FRONTEND_URL=http://localhost:3000
+    networks:
+      - algogym-network
+
+  user-service:
+    build: ./microservices/user-service
+    ports:
+      - "3002:3002"
+    environment:
+      - PORT=3002
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - CLERK_SECRET_KEY=${CLERK_SECRET_KEY}
+      - FRONTEND_URL=http://localhost:3000
+    networks:
+      - algogym-network
+
+  question-service:
+    build: ./microservices/question-service
+    ports:
+      - "3003:3003"
+    environment:
+      - PORT=3003
+    networks:
+      - algogym-network
+
+  verify-service:
+    build: ./microservices/verify-codeforces-service
+    ports:
+      - "3004:3004"
+    environment:
+      - PORT=3004
+    networks:
+      - algogym-network
+
+networks:
+  algogym-network:
+    driver: bridge
+
+volumes:
+  node_modules_room:
+  node_modules_user:
+  node_modules_question:
+  node_modules_verify:
+  node_modules_gateway:

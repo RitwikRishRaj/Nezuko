@@ -76,7 +76,7 @@ export default function RoomPage() {
   });
   
   // Get room mode (1v1 or team-vs-team)
-  const [roomMode] = useState(() => {
+  const [roomMode, setRoomMode] = useState(() => {
     return searchParams.get('mode') || 'team-vs-team';
   });
   
@@ -101,17 +101,23 @@ export default function RoomPage() {
   const [competitionType, setCompetitionType] = useState<CompetitionType>('icpc');
   const [selectedTags, setSelectedTags] = useState<Tag[]>([]);
   const [isRandom, setIsRandom] = useState(false);
-  const [showProblemLinks, setShowProblemLinks] = useState(true);
+  const [showProblemLinks, setShowProblemLinks] = useState(false);
+  const [customProblemLinks, setCustomProblemLinks] = useState<string[]>([]);
   const [isRoomCreator, setIsRoomCreator] = useState(true);
   const [roomCreatorInfo, setRoomCreatorInfo] = useState<{
     clerk_id: string;
     codeforces_handle: string;
   } | null>(null);
   
+  // Question settings
+  const [questionCount, setQuestionCount] = useState(5);
+  const [ratingRange, setRatingRange] = useState({ min: 800, max: 1500 });
+  
   // Invite system state
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [isStartingGame, setIsStartingGame] = useState(false);
   const [activeSlot, setActiveSlot] = useState<{type: 'host' | 'opponent', index: number} | null>(null);
   const [invitedUsers, setInvitedUsers] = useState<{
     host2: any | null;
@@ -133,9 +139,12 @@ export default function RoomPage() {
 
   // Load room state on mount and subscribe to realtime updates
   useEffect(() => {
-    // Update URL with room ID if not present
+    // Update URL with room ID and mode if not present
     if (!searchParams.get('id')) {
-      window.history.replaceState(null, '', `/room?id=${roomId}`);
+      window.history.replaceState(null, '', `/room?id=${roomId}&mode=${roomMode}`);
+    } else if (!searchParams.get('mode')) {
+      // If ID exists but mode doesn't, add mode to URL
+      window.history.replaceState(null, '', `/room?id=${searchParams.get('id')}&mode=${roomMode}`);
     }
     
     const loadRoomState = async () => {
@@ -157,10 +166,19 @@ export default function RoomPage() {
             myInvite: data.invites?.find((i: any) => i.invited_clerk_id === user.id)
           });
           
-          // Get room creator info from invites
+          // Get room creator info and room mode from invites
           let creatorClerkId = null;
+          let fetchedRoomMode = null;
           if (data.invites?.length > 0) {
             creatorClerkId = data.invites[0]?.inviter_clerk_id;
+            fetchedRoomMode = data.invites[0]?.room_mode;
+            
+            // Update room mode if we got it from the database
+            if (fetchedRoomMode && fetchedRoomMode !== roomMode) {
+              setRoomMode(fetchedRoomMode);
+              // Update URL with correct mode
+              window.history.replaceState(null, '', `/room?id=${roomId}&mode=${fetchedRoomMode}`);
+            }
           }
           
           // Check if current user is the creator (use session storage as primary source)
@@ -300,6 +318,32 @@ export default function RoomPage() {
           setCurrentUserSlot(foundCurrentUserSlot);
           setInvitedUsers(newInvitedUsers);
         }
+
+        // Check if game has already started
+        try {
+          const configResponse = await fetch(`/api/room/config?roomId=${roomId}`);
+          if (configResponse.ok) {
+            const configData = await configResponse.json();
+            const roomConfig = configData.config;
+            
+            // If game has started and current user didn't start it, redirect to arena
+            if (roomConfig.game_status === 'started' && roomConfig.game_started_by !== user.id) {
+              console.log('🎮 Game already started, redirecting to arena...');
+              
+              toast.info('Game is already in progress', {
+                description: 'Redirecting to arena...',
+                duration: 2000
+              });
+              
+              setTimeout(() => {
+                window.location.href = `/arena?roomId=${roomId}`;
+              }, 1000);
+              return;
+            }
+          }
+        } catch (error) {
+          console.log('Could not check game status:', error);
+        }
       } catch (error) {
         console.error('Error loading room state:', error);
       }
@@ -382,6 +426,84 @@ export default function RoomPage() {
         (payload) => {
           console.log('🔴 REALTIME INSERT EVENT:', payload);
           loadRoomState();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'room_game_start',
+          filter: `room_id=eq.${roomId}`
+        },
+        (payload) => {
+          console.log('🎮 GAME START EVENT:', payload);
+          
+          // Only redirect if current user is not the one who started the game
+          if (payload.new && payload.new.started_by !== user?.id) {
+            console.log('🚀 Game started by host, redirecting to arena...');
+            
+            toast.success('Game started by host!', {
+              description: 'Redirecting to arena...',
+              duration: 2000
+            });
+            
+            setTimeout(() => {
+              window.location.href = `/arena?roomId=${roomId}`;
+            }, 1000);
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'room_game_start',
+          filter: `room_id=eq.${roomId}`
+        },
+        (payload) => {
+          console.log('🎮 GAME START UPDATE EVENT:', payload);
+          
+          // Only redirect if current user is not the one who started the game
+          if (payload.new && payload.new.started_by !== user?.id && payload.new.status === 'started') {
+            console.log('🚀 Game started by host, redirecting to arena...');
+            
+            toast.success('Game started by host!', {
+              description: 'Redirecting to arena...',
+              duration: 2000
+            });
+            
+            setTimeout(() => {
+              window.location.href = `/arena?roomId=${roomId}`;
+            }, 1000);
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'room_config',
+          filter: `room_id=eq.${roomId}`
+        },
+        (payload) => {
+          console.log('🔴 ROOM CONFIG UPDATE EVENT:', payload);
+          
+          // Check if game was started
+          if (payload.new && payload.new.game_status === 'started' && payload.new.game_started_by !== user?.id) {
+            console.log('🚀 Game started by host (via room_config), redirecting to arena...');
+            
+            toast.success('Game started by host!', {
+              description: 'Redirecting to arena...',
+              duration: 2000
+            });
+            
+            setTimeout(() => {
+              window.location.href = `/arena?roomId=${roomId}`;
+            }, 1000);
+          }
         }
       )
       .subscribe((status) => {
@@ -557,6 +679,125 @@ export default function RoomPage() {
     }
   };
 
+  const handlePlayClick = async () => {
+    if (isStartingGame) return; // Prevent multiple clicks
+    
+    setIsStartingGame(true);
+    try {
+      // Filter out empty links and validate Codeforces URLs
+      const nonEmptyLinks = showProblemLinks 
+        ? customProblemLinks.filter(link => link.trim() !== '')
+        : [];
+      
+      const validCustomLinks = nonEmptyLinks.filter(link => {
+        try {
+          const url = new URL(link.trim());
+          return url.hostname === 'codeforces.com' || url.hostname === 'www.codeforces.com';
+        } catch {
+          return false;
+        }
+      });
+
+      // Show warning if some links are invalid
+      if (showProblemLinks && nonEmptyLinks.length > 0 && validCustomLinks.length < nonEmptyLinks.length) {
+        const invalidCount = nonEmptyLinks.length - validCustomLinks.length;
+        toast.warning(`${invalidCount} invalid Codeforces link${invalidCount > 1 ? 's' : ''} ignored`, {
+          description: 'Only valid Codeforces problem links will be used.',
+          duration: 4000
+        });
+      }
+
+      // Check if custom links are enabled but no valid links provided
+      if (showProblemLinks && validCustomLinks.length === 0) {
+        toast.error('No valid Codeforces problem links provided', {
+          description: 'Please add valid Codeforces problem links or disable custom links.',
+          duration: 5000
+        });
+        return;
+      }
+
+      // Store custom links in localStorage as backup
+      if (showProblemLinks && validCustomLinks.length > 0) {
+        localStorage.setItem(`room_${roomId}_custom_links`, JSON.stringify({
+          links: validCustomLinks,
+          useCustomLinks: true
+        }));
+      } else {
+        localStorage.removeItem(`room_${roomId}_custom_links`);
+      }
+
+      // Save room configuration
+      const configResponse = await fetch('/api/room/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          roomId,
+          questionCount,
+          minutes,
+          format: competitionType,
+          minRating: ratingRange.min,
+          maxRating: ratingRange.max,
+          tags: isRandom ? [] : selectedTags.map(t => t.name),
+          isRandomTags: isRandom,
+          problems: null, // Will be fetched in arena
+          customProblemLinks: validCustomLinks.length > 0 ? validCustomLinks : null,
+          useCustomLinks: showProblemLinks && validCustomLinks.length > 0
+        })
+      });
+
+      if (!configResponse.ok) {
+        const errorData = await configResponse.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('Config save failed:', {
+          status: configResponse.status,
+          error: errorData,
+          customLinks: validCustomLinks,
+          useCustomLinks: showProblemLinks && validCustomLinks.length > 0
+        });
+        toast.error('Failed to save room configuration', {
+          description: errorData.error || `Server error: ${configResponse.status}`,
+          duration: 5000
+        });
+        return;
+      }
+
+      console.log('Room configuration saved successfully');
+
+      // Start the game and notify all participants
+      const startGameResponse = await fetch('/api/room/start-game', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomId })
+      });
+
+      if (!startGameResponse.ok) {
+        const errorData = await startGameResponse.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('Failed to start game:', errorData);
+        toast.error('Failed to start game', {
+          description: errorData.error || `Server error: ${startGameResponse.status}`,
+          duration: 5000
+        });
+        return;
+      }
+
+      const startGameData = await startGameResponse.json();
+      console.log('Game started successfully:', startGameData);
+
+      toast.success('Game started!', {
+        description: 'All participants are being notified...',
+        duration: 2000
+      });
+
+      // Navigate to arena (host goes immediately)
+      setTimeout(() => {
+        window.location.href = `/arena?roomId=${roomId}`;
+      }, 1000);
+    } catch (error) {
+      console.error('Error starting game:', error);
+      toast.error('Failed to start game');
+      setIsStartingGame(false);
+    }
+  };
+
   const handleDiscardRoom = async () => {
     // Show confirmation toast
     toast('Are you sure you want to discard this room?', {
@@ -618,32 +859,58 @@ export default function RoomPage() {
           <div className="flex items-center gap-6">
             <h1 className="text-4xl font-bold text-white">Room</h1>
             <div className="flex items-center gap-3">
-              <HoverButton className="bg-gradient-to-r from-green-500/20 to-emerald-500/20 hover:from-green-500/30 hover:to-emerald-500/30 px-4 py-2.5 group/button">
+              <HoverButton 
+                onClick={handlePlayClick}
+                className={`px-4 py-2.5 group/button transition-all duration-300 ${
+                  isStartingGame 
+                    ? 'bg-gradient-to-r from-blue-500/20 to-purple-500/20 cursor-not-allowed' 
+                    : 'bg-gradient-to-r from-green-500/20 to-emerald-500/20 hover:from-green-500/30 hover:to-emerald-500/30'
+                }`}
+              >
                 <span className="relative z-10 flex items-center gap-3 transition-all duration-300">
                   <span className="relative text-white">
-                    <svg
-                      className="group-hover/button:scale-110 group-hover/button:-translate-y-0.5 transition-transform duration-300 group-active/button:scale-95"
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="18"
-                      height="18"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5" />
-                      <line x1="13" x2="19" y1="19" y2="13" />
-                      <line x1="16" x2="20" y1="16" y2="20" />
-                      <line x1="19" x2="21" y1="21" y2="19" />
-                      <polyline points="14.5 6.5 18 3 21 3 21 6 17.5 9.5" />
-                      <line x1="5" x2="9" y1="14" y2="18" />
-                      <line x1="7" x2="4" y1="17" y2="20" />
-                      <line x1="3" x2="5" y1="19" y2="21" />
-                    </svg>
+                    {isStartingGame ? (
+                      <svg
+                        className="animate-spin"
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="18"
+                        height="18"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M21 12a9 9 0 11-6.219-8.56"/>
+                      </svg>
+                    ) : (
+                      <svg
+                        className="group-hover/button:scale-110 group-hover/button:-translate-y-0.5 transition-transform duration-300 group-active/button:scale-95"
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="18"
+                        height="18"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5" />
+                        <line x1="13" x2="19" y1="19" y2="13" />
+                        <line x1="16" x2="20" y1="16" y2="20" />
+                        <line x1="19" x2="21" y1="21" y2="19" />
+                        <polyline points="14.5 6.5 18 3 21 3 21 6 17.5 9.5" />
+                        <line x1="5" x2="9" y1="14" y2="18" />
+                        <line x1="7" x2="4" y1="17" y2="20" />
+                        <line x1="3" x2="5" y1="19" y2="21" />
+                      </svg>
+                    )}
                   </span>
-                  <span className="font-semibold text-white/95 group-hover/button:translate-y-[-1px] group-hover/button:scale-105 transition-all duration-300">Play</span>
+                  <span className="font-semibold text-white/95 group-hover/button:translate-y-[-1px] group-hover/button:scale-105 transition-all duration-300">
+                    {isStartingGame ? 'Starting Game...' : 'Play'}
+                  </span>
                 </span>
               </HoverButton>
 
@@ -891,9 +1158,22 @@ export default function RoomPage() {
               <div className="rounded-xl bg-white/5 p-6 border border-white/10">
                 <div className="w-full">
                   <div className="flex items-center justify-between">
-                    <div className="flex-1 pr-6">
+                    <div className={`flex-1 pr-6 relative transition-all duration-300 ${showProblemLinks ? 'opacity-30 blur-sm pointer-events-none' : ''}`}>
                       <h3 className="text-lg font-medium text-white/80 mb-3">Questions Counter</h3>
-                      <AnimatedNumberCounter />
+                      <AnimatedNumberCounter 
+                        value={questionCount}
+                        onChange={setQuestionCount}
+                        min={1}
+                        max={20}
+                        disabled={showProblemLinks}
+                      />
+                      {showProblemLinks && (
+                        <div className="absolute inset-0 flex items-center justify-center z-10">
+                          <span className="text-sm text-white/80 bg-black/70 backdrop-blur-sm px-3 py-1 rounded-md border border-white/20">
+                            Disabled when using custom problem links
+                          </span>
+                        </div>
+                      )}
                     </div>
                     <div className="h-16 w-px bg-white/20"></div>
                     <div className="flex-1 pl-6">
@@ -944,7 +1224,7 @@ export default function RoomPage() {
                 </div>
 
                 {/* Tags Input */}
-                <div className="mt-1">
+                <div className={`mt-1 relative transition-all duration-300 ${showProblemLinks ? 'opacity-30 blur-sm pointer-events-none' : ''}`}>
                   <div className="flex items-center justify-between mb-1">
                     <h3 className="text-lg font-medium text-white/80">Tags</h3>
                     <div className="flex items-center gap-2">
@@ -960,6 +1240,7 @@ export default function RoomPage() {
                               setSelectedTags([]);
                             }
                           }}
+                          disabled={showProblemLinks}
                         />
                       </div>
                     </div>
@@ -974,21 +1255,34 @@ export default function RoomPage() {
                       selectedTags={selectedTags}
                       onTagsChange={setSelectedTags}
                       placeholder="Search or create a topic..."
+                      disabled={showProblemLinks}
                     />
+                  )}
+                  {showProblemLinks && (
+                    <div className="absolute inset-0 flex items-center justify-center z-10">
+                      <span className="text-sm text-white/80 bg-black/70 backdrop-blur-sm px-3 py-1 rounded-md border border-white/20">
+                        Disabled when using custom problem links
+                      </span>
+                    </div>
                   )}
                 </div>
 
                 {/* Rating Range Selector */}
-                <div className="mt-0">
+                <div className={`mt-0 relative transition-all duration-300 ${showProblemLinks ? 'opacity-30 blur-sm pointer-events-none' : ''}`}>
                   <RatingRangeSlider
                     min={800}
                     max={3500}
                     step={100}
-                    onChange={(range) => {
-                      console.log('Rating range selected:', range);
-                      // You can add your state management logic here
-                    }}
+                    onChange={setRatingRange}
+                    disabled={showProblemLinks}
                   />
+                  {showProblemLinks && (
+                    <div className="absolute inset-0 flex items-center justify-center z-10">
+                      <span className="text-sm text-white/80 bg-black/70 backdrop-blur-sm px-3 py-1 rounded-md border border-white/20">
+                        Disabled when using custom problem links
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Link Editor Section */}
@@ -1006,7 +1300,20 @@ export default function RoomPage() {
                       </div>
                     </div>
                   </div>
-                  <LinkEditor enabled={showProblemLinks} />
+                  <LinkEditor 
+                    enabled={showProblemLinks} 
+                    onChange={setCustomProblemLinks}
+                  />
+                  {showProblemLinks && (
+                    <div className="mt-2 space-y-1">
+                      <p className="text-xs text-white/60">
+                        Add Codeforces problem links (e.g., https://codeforces.com/problemset/problem/1234/A)
+                      </p>
+                      <p className="text-xs text-yellow-400/80">
+                        💡 The number of questions will be determined by the number of links you provide
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

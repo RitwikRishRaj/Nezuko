@@ -12,12 +12,11 @@ import {
   MobileNavMenu,
 } from "@/components/ui/resizable-navbar";
 import { Footer } from '@/components/footer-section';
-import { cn } from "@/lib/utils";
 import { InteractiveHoverButton } from "@/components/ui/interactive-hover-button";
 import { useState } from "react";
 import MagicBento from "@/components/MagicBento";
 import { useUser, useClerk } from "@clerk/nextjs";
-import { useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";/*  */
 
 export default function HomePage() {
   const navItems = [

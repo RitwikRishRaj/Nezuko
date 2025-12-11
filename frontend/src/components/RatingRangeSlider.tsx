@@ -1,4 +1,4 @@
-import React, { useState, useCallback, ChangeEvent } from 'react';
+import React, { useState, useCallback, useEffect, ChangeEvent } from 'react';
 import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
 import ToggleSwitch from './toggle-switch';
@@ -152,6 +152,7 @@ interface RatingRangeSliderProps {
   step?: number;
   allowSingleValue?: boolean;
   onChange?: (range: { min: number; max: number }) => void;
+  disabled?: boolean;
 }
 
 const RatingRangeSlider: React.FC<RatingRangeSliderProps> = ({
@@ -160,11 +161,19 @@ const RatingRangeSlider: React.FC<RatingRangeSliderProps> = ({
   step = 100,
   allowSingleValue = true,
   onChange,
+  disabled = false,
 }) => {
   const [isEnabled, setIsEnabled] = useState(false);
   const [range, setRange] = useState({ min, max });
   const [isSingleValue, setIsSingleValue] = useState(false);
   const [error, setError] = useState('');
+
+  // Call onChange with initial values on mount
+  useEffect(() => {
+    if (onChange) {
+      onChange({ min, max });
+    }
+  }, []); // Only run once on mount
 
   // Validate and update range
   const validateAndUpdate = useCallback((newMin: number, newMax: number) => {
@@ -251,6 +260,7 @@ const RatingRangeSlider: React.FC<RatingRangeSliderProps> = ({
       initial="hidden"
       animate="visible"
       variants={containerVariants}
+      style={{ opacity: disabled ? 0.5 : 1, pointerEvents: disabled ? 'none' : 'auto' }}
     >
       <Header>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -263,6 +273,7 @@ const RatingRangeSlider: React.FC<RatingRangeSliderProps> = ({
           name="ratingRange"
           checked={isEnabled}
           onChange={() => setIsEnabled(!isEnabled)}
+          disabled={disabled}
         />
       </Header>
       

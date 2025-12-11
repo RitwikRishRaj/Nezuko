@@ -7,24 +7,30 @@ import { motion, AnimatePresence } from "framer-motion"
 
 interface LinkEditorProps {
   enabled: boolean;
+  onChange?: (links: string[]) => void;
 }
 
-export default function LinkEditor({ enabled }: LinkEditorProps) {
+export default function LinkEditor({ enabled, onChange }: LinkEditorProps) {
   const [links, setLinks] = useState<string[]>([""])
 
   const handleChange = (index: number, value: string) => {
     const newLinks = [...links]
     newLinks[index] = value
     setLinks(newLinks)
+    onChange?.(newLinks)
   }
 
   const handleAddLine = () => {
-    setLinks([...links, ""])
+    const newLinks = [...links, ""]
+    setLinks(newLinks)
+    onChange?.(newLinks)
   }
 
   const handleRemoveLine = (index: number) => {
     if (links.length > 1) {
-      setLinks(links.filter((_, i) => i !== index))
+      const newLinks = links.filter((_, i) => i !== index)
+      setLinks(newLinks)
+      onChange?.(newLinks)
     }
   }
 
@@ -61,7 +67,7 @@ export default function LinkEditor({ enabled }: LinkEditorProps) {
                 value={link}
                 onChange={(e) => handleChange(index, e.target.value)}
                 onKeyDown={(e) => enabled && handleKeyDown(e, index)}
-                placeholder={enabled ? "https://example.com" : "Enable to edit"}
+                placeholder={enabled ? "https://codeforces.com/problemset/problem/1234/A" : "Enable to edit"}
                 disabled={!enabled}
                 className={`flex-1 px-4 py-3 bg-transparent border-0 outline-none font-mono text-sm ${
                   enabled ? 'text-white/90 placeholder-white/40 focus:bg-white/5' : 'text-white/50 placeholder-white/20'

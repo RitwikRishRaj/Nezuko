@@ -28,7 +28,7 @@ const geistMono = Geist_Mono({
 const links = [
   {
     label: "Arena",
-    href: "/dashboard",
+    href: "/dashboard/arena-choose",
     icon: (
       <svg
         width="20"
@@ -192,7 +192,7 @@ export default function DashboardLayout({
       <div 
         className="flex h-full"
         style={{
-          backgroundColor: "#161928"
+          backgroundColor: "#000000"
         }}
       >
         <Sidebar open={open} setOpen={setOpen}>
@@ -227,7 +227,7 @@ export default function DashboardLayout({
         <main 
           className="flex-1 overflow-y-auto h-full"
           style={{
-            backgroundColor: "#161928"
+            backgroundColor: "#000000"
           }}
         >
           <div className="p-6">

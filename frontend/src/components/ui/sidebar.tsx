@@ -169,17 +169,42 @@ export const SidebarLink = ({
   className?: string;
 }) => {
   const { open, animate } = useSidebar();
+  const [isActive, setIsActive] = React.useState(false);
+
+  React.useEffect(() => {
+    setIsActive(window.location.pathname === link.href);
+  }, [link.href]);
+
   return (
     <a
       href={link.href}
       className={cn(
-        "flex items-center group/sidebar py-3 min-w-0 flex-nowrap relative overflow-hidden",
+        "flex items-center group/sidebar py-3 px-3 min-w-0 flex-nowrap relative overflow-hidden rounded-lg transition-all duration-300 no-underline",
+        isActive 
+          ? "bg-white/10 shadow-lg shadow-purple-500/20" 
+          : "hover:bg-white/5",
         className
       )}
+      style={{ textDecoration: 'none' }}
       {...props}
     >
+      {/* Active indicator bar */}
+      {isActive && (
+        <motion.div
+          layoutId="activeIndicator"
+          className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-purple-500 to-pink-500 rounded-r-full"
+          initial={{ opacity: 0, x: -10 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{
+            type: "spring",
+            stiffness: 300,
+            damping: 30
+          }}
+        />
+      )}
+
       <motion.div 
-        className="flex items-center w-full"
+        className="flex items-center w-full relative z-10"
         initial={false}
         animate={{
           justifyContent: animate ? (open ? "flex-start" : "center") : "flex-start",
@@ -191,8 +216,14 @@ export const SidebarLink = ({
           staggerChildren: 0.05
         }}
       >
-        <div className="flex-shrink-0 w-5 h-5 flex items-center justify-center min-w-[20px] min-h-[20px] relative z-10">
-          <div className="w-5 h-5 flex items-center justify-center">
+        <div className={cn(
+          "flex-shrink-0 w-5 h-5 flex items-center justify-center min-w-[20px] min-h-[20px] relative z-10 transition-all duration-300",
+          isActive && "scale-110"
+        )}>
+          <div className={cn(
+            "w-5 h-5 flex items-center justify-center transition-all duration-300",
+            isActive && "drop-shadow-[0_0_8px_rgba(168,85,247,0.6)]"
+          )}>
             {link.icon}
           </div>
         </div>
@@ -235,7 +266,12 @@ export const SidebarLink = ({
                   ease: [0.4, 0, 0.2, 1]
                 }
               }}
-              className="text-white dark:text-neutral-200 text-base group-hover/sidebar:translate-x-1 whitespace-nowrap flex-shrink-0 overflow-hidden"
+              className={cn(
+                "text-base group-hover/sidebar:translate-x-1 whitespace-nowrap flex-shrink-0 overflow-hidden transition-all duration-300",
+                isActive 
+                  ? "text-white font-semibold drop-shadow-[0_0_8px_rgba(168,85,247,0.4)]" 
+                  : "text-white/80 dark:text-neutral-200"
+              )}
             >
               {link.label}
             </motion.span>

@@ -211,6 +211,7 @@ interface TagSelectorProps<T> {
   getLabel?: (tag: T) => string
   placeholder?: string
   className?: string
+  disabled?: boolean
 }
 
 function TagSelector<T extends { id: string; name: string }>({
@@ -221,6 +222,7 @@ function TagSelector<T extends { id: string; name: string }>({
   getLabel = (tag: any) => tag.name,
   placeholder = "Search tags...",
   className,
+  disabled = false,
 }: TagSelectorProps<T>) {
   const [open, setOpen] = useState(false)
   const [inputValue, setInputValue] = useState("")
@@ -307,13 +309,14 @@ function TagSelector<T extends { id: string; name: string }>({
   }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={disabled ? false : open} onOpenChange={disabled ? undefined : setOpen}>
       <PopoverTrigger asChild>
         <div
           className={cn(
             "flex flex-wrap gap-2 mt-1 py-2 pl-2 pr-3 h-auto w-full text-left items-center justify-start min-h-9",
             "border border-input rounded-md bg-transparent",
             "focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2",
+            disabled && "opacity-50 cursor-not-allowed pointer-events-none",
             className
           )}
         >

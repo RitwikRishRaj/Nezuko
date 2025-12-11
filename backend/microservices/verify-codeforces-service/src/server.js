@@ -1,15 +1,38 @@
-import express from "express";
-import axios from "axios";
+const express = require("express");
+const axios = require("axios");
 
 const app = express();
+
+// Enable CORS
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  
+  next();
+});
+
 app.use(express.json());
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.status(200).json({ 
+    status: 'healthy', 
+    service: 'verify-service',
+    timestamp: new Date().toISOString()
+  });
+});
 
 // Verification configuration
 const VERIFICATION_PROBLEM = { contestId: 1000, index: "A" }; // Problem 1000A
 
-// POST /verify-codeforces
+// POST /api/verify
 // body: { handle: "someUser" }
-app.post("/verify-codeforces", async (req, res) => {
+app.post("/api/verify", async (req, res) => {
   const { handle } = req.body;
 
   if (!handle) {
@@ -69,5 +92,5 @@ app.post("/verify-codeforces", async (req, res) => {
   }
 });
 
-const PORT = 3001;
+const PORT = process.env.PORT || 3004;
 app.listen(PORT, () => console.log(`Verification service running on port ${PORT}`));
