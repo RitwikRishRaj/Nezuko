@@ -139,6 +139,83 @@ export default function RoomPage() {
   // Track if current user was in a slot (to detect kicks)
   const [currentUserSlot, setCurrentUserSlot] = useState<string | null>(null);
   const isInitialLoadRef = React.useRef(true);
+  
+  // Handle realtime updates directly without API calls
+  const handleRealtimeInviteUpdate = async (payload: any) => {
+    console.log('🔄 Processing realtime invite update:', payload);
+    
+    if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+      const invite = payload.new;
+      
+      // If this is an accepted invite, add user to local state
+      if (invite.status === 'accepted') {
+        try {
+          // Fetch user details for the accepted invite
+          const userResponse = await apiClient.get(API_CONFIG.ENDPOINTS.USER.DETAILS, { clerkId: invite.invited_clerk_id });
+          if (userResponse.ok) {
+            const userData = await userResponse.json();
+            
+            setInvitedUsers(prev => ({
+              ...prev,
+              [invite.slot]: {
+                clerk_id: invite.invited_clerk_id,
+                codeforces_handle: userData.codeforces_handle || 'Unknown'
+              }
+            }));
+            
+            // Track if current user accepted
+            if (invite.invited_clerk_id === user?.id) {
+              setCurrentUserSlot(invite.slot);
+            }
+          }
+        } catch (error) {
+          console.error('Error fetching user details for realtime update:', error);
+        }
+      }
+      
+      // If invite was rejected or deleted, remove from local state
+      if (invite.status === 'rejected' || payload.eventType === 'DELETE') {
+        setInvitedUsers(prev => ({
+          ...prev,
+          [invite.slot]: null
+        }));
+        
+        // If current user was removed
+        if (invite.invited_clerk_id === user?.id) {
+          setCurrentUserSlot(null);
+        }
+      }
+    }
+    
+    if (payload.eventType === 'DELETE') {
+      const invite = payload.old;
+      setInvitedUsers(prev => ({
+        ...prev,
+        [invite.slot]: null
+      }));
+    }
+  };
+
+  // Handle realtime config updates directly
+  const handleRealtimeConfigUpdate = (payload: any) => {
+    console.log('🔄 Processing realtime config update:', payload);
+    
+    if (payload.eventType === 'UPDATE' && payload.new) {
+      // Check if game was started
+      if (payload.new.game_status === 'started' && payload.new.game_started_by !== user?.id) {
+        console.log('🚀 Game started by host (via room_config), redirecting to arena...');
+        
+        toast.success('Game started by host!', {
+          description: 'Redirecting to arena...',
+          duration: 2000
+        });
+        
+        setTimeout(() => {
+          window.location.href = `/arena?roomId=${roomId}`;
+        }, 1000);
+      }
+    }
+  };
 
   // Load room state on mount and subscribe to realtime updates
   useEffect(() => {
@@ -155,6 +232,8 @@ export default function RoomPage() {
         console.log('No user, skipping room state load');
         return;
       }
+      
+
       
       console.log('🔄 Loading room state for room:', roomId, 'at', new Date().toISOString());
       
@@ -394,15 +473,17 @@ export default function RoomPage() {
       .on(
         'postgres_changes',
         {
-          event: 'UPDATE',
+          event: '*', // Listen to all events (INSERT, UPDATE, DELETE)
           schema: 'public',
           table: 'room_invites',
           filter: `room_id=eq.${roomId}`
         },
         (payload) => {
           try {
+            console.log('🔴 ROOM INVITES EVENT:', payload.eventType, payload);
+            
             // Check if someone was kicked (status changed to 'kicked')
-            if (payload.new && payload.new.status === 'kicked' && payload.new.invited_clerk_id === user?.id) {
+            if (payload.eventType === 'UPDATE' && payload.new && payload.new.status === 'kicked' && payload.new.invited_clerk_id === user?.id) {
               toast.error('You have been removed from the room', {
                 description: 'Redirecting to dashboard...',
                 duration: 1500
@@ -412,28 +493,11 @@ export default function RoomPage() {
                 window.location.href = '/dashboard';
               }, 1500);
             } else {
-              // Regular update, reload state
-              loadRoomState();
+              // Process the realtime event data directly instead of making API calls
+              handleRealtimeInviteUpdate(payload);
             }
           } catch (error) {
-            console.error('Error handling UPDATE event:', error);
-          }
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'room_invites',
-          filter: `room_id=eq.${roomId}`
-        },
-        (payload) => {
-          try {
-            console.log('🔴 REALTIME INSERT EVENT:', payload);
-            loadRoomState();
-          } catch (error) {
-            console.error('Error handling INSERT event:', error);
+            console.error('Error handling room invites event:', error);
           }
         }
       )
@@ -441,30 +505,19 @@ export default function RoomPage() {
       .on(
         'postgres_changes',
         {
-          event: 'UPDATE',
+          event: '*', // Listen to all events
           schema: 'public',
           table: 'room_config',
           filter: `room_id=eq.${roomId}`
         },
         (payload) => {
           try {
-            console.log('🔴 ROOM CONFIG UPDATE EVENT:', payload);
+            console.log('🔴 ROOM CONFIG EVENT:', payload.eventType, payload);
             
-            // Check if game was started
-            if (payload.new && payload.new.game_status === 'started' && payload.new.game_started_by !== user?.id) {
-              console.log('🚀 Game started by host (via room_config), redirecting to arena...');
-              
-              toast.success('Game started by host!', {
-                description: 'Redirecting to arena...',
-                duration: 2000
-              });
-              
-              setTimeout(() => {
-                window.location.href = `/arena?roomId=${roomId}`;
-              }, 1000);
-            }
+            // Handle room config updates directly
+            handleRealtimeConfigUpdate(payload);
           } catch (error) {
-            console.error('Error handling ROOM CONFIG UPDATE event:', error);
+            console.error('Error handling room config event:', error);
           }
         }
       )
@@ -477,19 +530,13 @@ export default function RoomPage() {
           console.error('  1. Row Level Security (RLS) blocking access');
           console.error('  2. Realtime not enabled on tables');
           console.error('  3. Network connectivity issues');
-          console.error('  → Falling back to polling for updates');
+          console.error('  → Please check Supabase realtime configuration');
           
-          // Set up basic polling fallback when realtime fails
-          const pollInterval = setInterval(async () => {
-            try {
-              await loadRoomData();
-            } catch (error) {
-              console.error('Polling error:', error);
-            }
-          }, 5000); // Poll every 5 seconds
-          
-          // Store interval ID for cleanup
-          (window as any).roomPollingInterval = pollInterval;
+          // Show user-friendly error instead of polling
+          toast.error('Real-time updates unavailable', {
+            description: 'Please refresh the page to see latest updates',
+            duration: 10000
+          });
           
         } else if (status === 'TIMED_OUT') {
           console.error('❌ Realtime TIMED_OUT - Connection timeout');
@@ -503,12 +550,7 @@ export default function RoomPage() {
       console.log('🔴 Cleaning up realtime subscription');
       supabase.removeChannel(channel);
       
-      // Clean up polling fallback if it exists
-      if ((window as any).roomPollingInterval) {
-        clearInterval((window as any).roomPollingInterval);
-        (window as any).roomPollingInterval = null;
-        console.log('🔴 Cleaned up polling fallback');
-      }
+      // No additional cleanup needed
     };
   }, [user, roomId, searchParams]);
   
@@ -685,18 +727,31 @@ export default function RoomPage() {
     setIsStartingGame(true);
     try {
       // Filter out empty links and validate Codeforces URLs
+      console.log('🔍 Custom links validation:', {
+        showProblemLinks,
+        customProblemLinksLength: customProblemLinks.length,
+        customProblemLinks: customProblemLinks
+      });
+      
       const nonEmptyLinks = showProblemLinks 
         ? customProblemLinks.filter(link => link.trim() !== '')
         : [];
       
+      console.log('🔍 Non-empty links:', nonEmptyLinks);
+      
       const validCustomLinks = nonEmptyLinks.filter(link => {
         try {
           const url = new URL(link.trim());
-          return url.hostname === 'codeforces.com' || url.hostname === 'www.codeforces.com';
-        } catch {
+          const isValid = url.hostname === 'codeforces.com' || url.hostname === 'www.codeforces.com';
+          console.log('🔍 Validating link:', link, '→', isValid, '(hostname:', url.hostname, ')');
+          return isValid;
+        } catch (error) {
+          console.log('🔍 Invalid URL:', link, '→', error.message);
           return false;
         }
       });
+      
+      console.log('🔍 Valid custom links:', validCustomLinks);
 
       // Show warning if some links are invalid
       if (showProblemLinks && nonEmptyLinks.length > 0 && validCustomLinks.length < nonEmptyLinks.length) {
@@ -716,15 +771,7 @@ export default function RoomPage() {
         return;
       }
 
-      // Store custom links in localStorage as backup
-      if (showProblemLinks && validCustomLinks.length > 0) {
-        localStorage.setItem(`room_${roomId}_custom_links`, JSON.stringify({
-          links: validCustomLinks,
-          useCustomLinks: true
-        }));
-      } else {
-        localStorage.removeItem(`room_${roomId}_custom_links`);
-      }
+      // Custom links will be stored in the arena session database
 
       // Save room configuration
       const configPayload = {
@@ -737,9 +784,16 @@ export default function RoomPage() {
         tags: isRandom ? [] : selectedTags.map(t => t.name),
         isRandomTags: isRandom,
         problems: null, // Will be fetched in arena
-        customProblemLinks: validCustomLinks.length > 0 ? validCustomLinks : null,
+        customProblemLinks: showProblemLinks ? validCustomLinks : null,
         useCustomLinks: showProblemLinks && validCustomLinks.length > 0
       };
+      
+      console.log('🔗 Saving custom links to room config:', {
+        showProblemLinks,
+        customProblemLinks: configPayload.customProblemLinks,
+        useCustomLinks: configPayload.useCustomLinks,
+        linksLength: configPayload.customProblemLinks?.length || 0
+      });
       
       console.log('Sending config payload:', configPayload);
       const configResponse = await apiClient.post(API_CONFIG.ENDPOINTS.ROOM.CONFIG, configPayload);
@@ -747,11 +801,15 @@ export default function RoomPage() {
       if (!configResponse.ok) {
         let errorData;
         let responseText;
+        
+        // Clone the response to read it multiple times if needed
+        const responseClone = configResponse.clone();
+        
         try {
           errorData = await configResponse.json();
         } catch (jsonError) {
           try {
-            responseText = await configResponse.text();
+            responseText = await responseClone.text();
             console.error('Non-JSON response:', responseText);
           } catch (textError) {
             console.error('Could not read response:', textError);
@@ -776,9 +834,124 @@ export default function RoomPage() {
 
       console.log('Room configuration saved successfully');
 
-      // Start the game and notify all participants
+      // Prepare data for arena session
+      let questions = [];
+      let customLinksForArena = null;
+      let useCustomLinks = false;
+      
+      if (showProblemLinks && validCustomLinks.length > 0) {
+        // Store custom links for arena session
+        customLinksForArena = validCustomLinks;
+        useCustomLinks = true;
+        
+        // Convert custom links to problem objects for immediate use
+        questions = validCustomLinks.map((link: string, index: number) => {
+          const urlMatch = link.match(/codeforces\.com\/(?:contest|problemset\/problem)\/(\d+)\/([A-Z]\d*)/);
+          if (urlMatch) {
+            const [, contestId, problemIndex] = urlMatch;
+            return {
+              id: `custom_${index}`,
+              name: `Problem ${problemIndex}`,
+              contestId: parseInt(contestId),
+              index: problemIndex,
+              rating: 0,
+              tags: [],
+              url: link,
+              solvedCount: null
+            };
+          } else {
+            return {
+              id: `custom_${index}`,
+              name: `Custom Problem ${index + 1}`,
+              contestId: null,
+              index: null,
+              rating: 0,
+              tags: [],
+              url: link,
+              solvedCount: null
+            };
+          }
+        });
+        
+        console.log('Using custom problem links:', validCustomLinks);
+      } else {
+        // Fetch questions from question service
+        const params = new URLSearchParams({
+          count: questionCount.toString(),
+        });
+
+        if (ratingRange.min) params.append('minRating', ratingRange.min.toString());
+        if (ratingRange.max) params.append('maxRating', ratingRange.max.toString());
+        
+        if (!isRandom && selectedTags.length > 0) {
+          params.append('tags', selectedTags.map(t => t.name).join(','));
+        }
+
+        console.log('Fetching questions with params:', params.toString());
+        const questionsResponse = await apiClient.get(`${API_CONFIG.ENDPOINTS.QUESTIONS.FETCH}?${params.toString()}`);
+        
+        if (!questionsResponse.ok) {
+          const errorData = await questionsResponse.json().catch(() => ({ error: 'Unknown error' }));
+          console.error('Failed to fetch questions:', errorData);
+          toast.error('Failed to fetch questions', {
+            description: errorData.error || `Server error: ${questionsResponse.status}`,
+            duration: 5000
+          });
+          return;
+        }
+
+        let questionsData;
+        try {
+          questionsData = await questionsResponse.json();
+        } catch (jsonError) {
+          console.error('Failed to parse questions response:', jsonError);
+          toast.error('Failed to parse questions response');
+          return;
+        }
+        
+        questions = questionsData.problems || [];
+        console.log('Questions fetched successfully:', questions.length, 'problems');
+        
+        // Check if fewer problems were fetched than requested
+        if (questions.length < questionCount) {
+          const tagsText = selectedTags.length > 0 
+            ? `tags: ${selectedTags.map(t => t.name).join(', ')}` 
+            : 'no specific tags';
+          const ratingText = ratingRange.min && ratingRange.max
+            ? `rating range: ${ratingRange.min}-${ratingRange.max}`
+            : 'any rating';
+          
+          toast.warning('Limited Questions Available', {
+            description: `Only ${questions.length} out of ${questionCount} questions found with ${tagsText} and ${ratingText}.`,
+            duration: 8000,
+          });
+        }
+      }
+
+      // Start the game and notify all participants with questions and custom links
+      console.log('🚀 Starting game with payload:', {
+        roomId,
+        questions: questions.length,
+        customProblemLinks: customLinksForArena,
+        useCustomLinks,
+        showProblemLinks,
+        validCustomLinksCount: validCustomLinks.length,
+        actualCustomLinks: customLinksForArena
+      });
+      
+      console.log('🔗 Custom links details:', {
+        showProblemLinks,
+        customProblemLinksLength: customProblemLinks.length,
+        validCustomLinksLength: validCustomLinks.length,
+        customLinksForArena,
+        useCustomLinks
+      });
+      
       const startGameResponse = await apiClient.post(API_CONFIG.ENDPOINTS.ROOM.START_GAME, {
-        roomId
+        roomId,
+        questions,
+        customProblemLinks: customLinksForArena,
+        useCustomLinks
       });
 
       if (!startGameResponse.ok) {
@@ -801,15 +974,19 @@ export default function RoomPage() {
       }
       console.log('Game started successfully:', startGameData);
 
+      // Custom links are now stored in room_config database table
+      console.log('✅ Custom links stored in room config database');
+
       toast.success('Game started!', {
         description: 'All participants are being notified...',
         duration: 2000
       });
 
       // Navigate to arena (host goes immediately)
+      // Add a longer delay to ensure arena session is created
       setTimeout(() => {
         window.location.href = `/arena?roomId=${roomId}`;
-      }, 1000);
+      }, 2000);
     } catch (error) {
       console.error('Error starting game:', error);
       toast.error('Failed to start game');

@@ -129,5 +129,5 @@ app.post("/api/verify", async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 3004;
+const PORT = process.env.PORT || 3005;
 app.listen(PORT, () => console.log(`Verification service running on port ${PORT}`));

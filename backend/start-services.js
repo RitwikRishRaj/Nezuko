@@ -29,12 +29,28 @@ const services = [
     color: '\x1b[35m' // Magenta
   },
   {
+    name: 'Arena Service',
+    command: 'npm',
+    args: ['run', 'dev'],
+    cwd: path.join(__dirname, 'microservices', 'arena-service'),
+    port: 3004,
+    color: '\x1b[34m' // Blue
+  },
+  {
     name: 'Verify Service',
     command: 'npm',
     args: ['run', 'dev'],
     cwd: path.join(__dirname, 'microservices', 'verify-codeforces-service'),
-    port: 3004,
-    color: '\x1b[34m' // Blue
+    port: 3005,
+    color: '\x1b[31m' // Red
+  },
+  {
+    name: 'Points Service',
+    command: 'npm',
+    args: ['run', 'dev'],
+    cwd: path.join(__dirname, 'microservices', 'points-service'),
+    port: 3006,
+    color: '\x1b[95m' // Bright Magenta
   },
   {
     name: 'API Gateway',
@@ -108,7 +124,9 @@ setTimeout(() => {
   console.log('🏠 Room Service: http://localhost:3001');
   console.log('👤 User Service: http://localhost:3002');
   console.log('❓ Question Service: http://localhost:3003');
-  console.log('✅ Verify Service: http://localhost:3004');
+  console.log('🏟️ Arena Service: http://localhost:3004');
+  console.log('✅ Verify Service: http://localhost:3005');
+  console.log('🏆 Points Service: http://localhost:3006');
   console.log('\n🔍 Health Check: http://localhost:8080/health/services');
   console.log('\n\x1b[33m💡 Press Ctrl+C to stop all services\x1b[0m\n');
 }, 10000);

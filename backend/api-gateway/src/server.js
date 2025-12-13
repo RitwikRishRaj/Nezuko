@@ -15,11 +15,13 @@ app.use(cors({
   credentials: true
 }));
 
-// Rate limiting
+// Rate limiting - More generous limits for development
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 1000, // limit each IP to 1000 requests per windowMs
-  message: 'Too many requests from this IP, please try again later.'
+  max: 5000, // limit each IP to 5000 requests per windowMs (increased from 1000)
+  message: 'Too many requests from this IP, please try again later.',
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
 });
 app.use(limiter);
 
@@ -35,7 +37,9 @@ app.get('/health', (req, res) => {
       room: process.env.ROOM_SERVICE_URL,
       user: process.env.USER_SERVICE_URL,
       question: process.env.QUESTION_SERVICE_URL,
-      verify: process.env.VERIFY_SERVICE_URL
+      verify: process.env.VERIFY_SERVICE_URL,
+      arena: process.env.ARENA_SERVICE_URL,
+      points: process.env.POINTS_SERVICE_URL
     }
   });
 });
@@ -46,7 +50,9 @@ app.get('/health/services', async (req, res) => {
     room: process.env.ROOM_SERVICE_URL,
     user: process.env.USER_SERVICE_URL,
     question: process.env.QUESTION_SERVICE_URL,
-    verify: process.env.VERIFY_SERVICE_URL
+    verify: process.env.VERIFY_SERVICE_URL,
+    arena: process.env.ARENA_SERVICE_URL,
+    points: process.env.POINTS_SERVICE_URL
   };
 
   const healthChecks = {};
@@ -138,9 +144,27 @@ app.use('/api/questions', createProxyMiddleware({
 
 // Route to Verify Service
 app.use('/api/verify', createProxyMiddleware({
-  target: process.env.VERIFY_SERVICE_URL || 'http://localhost:3004',
+  target: process.env.VERIFY_SERVICE_URL || 'http://localhost:3005',
   pathRewrite: {
     '^/api/verify': '/api/verify'
+  },
+  ...proxyOptions
+}));
+
+// Route to Arena Service
+app.use('/api/arena', createProxyMiddleware({
+  target: process.env.ARENA_SERVICE_URL || 'http://localhost:3004',
+  pathRewrite: {
+    '^/api/arena': '/api/arena'
+  },
+  ...proxyOptions
+}));
+
+// Route to Points Service
+app.use('/api/points', createProxyMiddleware({
+  target: process.env.POINTS_SERVICE_URL || 'http://localhost:3006',
+  pathRewrite: {
+    '^/api/points': '/api/points'
   },
   ...proxyOptions
 }));
@@ -150,7 +174,7 @@ app.use('*', (req, res) => {
   res.status(404).json({ 
     error: 'Route not found',
     path: req.originalUrl,
-    availableServices: ['room', 'user', 'questions', 'verify']
+    availableServices: ['room', 'user', 'questions', 'verify', 'arena', 'points']
   });
 });
 
@@ -171,7 +195,9 @@ app.listen(PORT, () => {
   console.log(`  /api/room/* → ${process.env.ROOM_SERVICE_URL || 'http://localhost:3001'}`);
   console.log(`  /api/user/* → ${process.env.USER_SERVICE_URL || 'http://localhost:3002'}`);
   console.log(`  /api/questions/* → ${process.env.QUESTION_SERVICE_URL || 'http://localhost:3003'}`);
-  console.log(`  /api/verify/* → ${process.env.VERIFY_SERVICE_URL || 'http://localhost:3004'}`);
+  console.log(`  /api/arena/* → ${process.env.ARENA_SERVICE_URL || 'http://localhost:3004'}`);
+  console.log(`  /api/verify/* → ${process.env.VERIFY_SERVICE_URL || 'http://localhost:3005'}`);
+  console.log(`  /api/points/* → ${process.env.POINTS_SERVICE_URL || 'http://localhost:3006'}`);
 });
 
 module.exports = app;

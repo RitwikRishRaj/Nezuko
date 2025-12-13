@@ -7,7 +7,9 @@ const services = [
   { name: 'Room Service', url: 'http://localhost:3001/health' },
   { name: 'User Service', url: 'http://localhost:3002/health' },
   { name: 'Question Service', url: 'http://localhost:3003/health' },
-  { name: 'Verify Service', url: 'http://localhost:3004/health' }
+  { name: 'Arena Service', url: 'http://localhost:3004/health' },
+  { name: 'Verify Service', url: 'http://localhost:3005/health' },
+  { name: 'Points Service', url: 'http://localhost:3006/health' }
 ];
 
 async function checkService(service) {
@@ -102,7 +104,9 @@ async function checkAllServices() {
     console.log('   🏠 Room Service: http://localhost:3001');
     console.log('   👤 User Service: http://localhost:3002');
     console.log('   ❓ Question Service: http://localhost:3003');
-    console.log('   ✅ Verify Service: http://localhost:3004');
+    console.log('   🏟️ Arena Service: http://localhost:3004');
+    console.log('   ✅ Verify Service: http://localhost:3005');
+    console.log('   🏆 Points Service: http://localhost:3006');
     console.log('\n🔗 Gateway Health Dashboard: http://localhost:8080/health/services');
   } else {
     console.log('⚠️  Some services are not healthy. Please check the logs and configuration.');

@@ -12,7 +12,7 @@ const roomConfigSchema = Joi.object({
   tags: Joi.array().items(Joi.string()).default([]),
   isRandomTags: Joi.boolean().default(false),
   problems: Joi.array().allow(null).default(null),
-  customProblemLinks: Joi.array().items(Joi.string().uri()).allow(null).default(null),
+  customProblemLinks: Joi.array().items(Joi.string()).allow(null).default(null),
   useCustomLinks: Joi.boolean().default(false)
 });
 
@@ -71,17 +71,17 @@ class RoomController {
         tags,
         is_random_tags: isRandomTags,
         problems,
+        custom_problem_links: customProblemLinks,
+        use_custom_links: useCustomLinks,
         created_by: req.userId,
         updated_at: new Date().toISOString()
       };
 
-      // Only add custom link fields if they exist
-      if (customProblemLinks !== undefined) {
-        configData.custom_problem_links = customProblemLinks;
-      }
-      if (useCustomLinks !== undefined) {
-        configData.use_custom_links = useCustomLinks;
-      }
+      console.log('🔗 Storing custom links in room config:', {
+        customProblemLinks: customProblemLinks || null,
+        useCustomLinks: useCustomLinks || false,
+        linksLength: customProblemLinks?.length || 0
+      });
 
       console.log('Creating/updating config with data:', configData);
       const config = await db.createOrUpdateRoomConfig(configData);
@@ -276,22 +276,65 @@ class RoomController {
   // Game Management
   async startGame(req, res, next) {
     try {
-      const { roomId } = req.body;
+      const { roomId, questions, customProblemLinks, useCustomLinks } = req.body;
+
+      console.log('🎯 StartGame called with:', {
+        roomId,
+        questionsLength: questions?.length || 0,
+        customProblemLinks: customProblemLinks || null,
+        customProblemLinksLength: customProblemLinks?.length || 0,
+        useCustomLinks: useCustomLinks || false,
+        userId: req.userId
+      });
 
       if (!roomId) {
         return res.status(400).json({ error: 'Room ID is required' });
       }
 
-      // Verify user is room creator
-      const invites = await db.getRoomInvites(roomId);
-      if (!invites || invites.length === 0) {
-        return res.status(404).json({ error: 'Room not found' });
+      // Get room configuration first
+      const roomConfig = await db.getRoomConfig(roomId);
+      if (!roomConfig) {
+        return res.status(404).json({ error: 'Room configuration not found' });
       }
 
-      const roomCreatorId = invites[0].inviter_clerk_id;
+      console.log('🔍 Room config custom links:', {
+        use_custom_links: roomConfig.use_custom_links,
+        custom_problem_links: roomConfig.custom_problem_links,
+        linksLength: roomConfig.custom_problem_links?.length || 0
+      });
+
+      // Use custom links from room config if not provided in request
+      let finalCustomProblemLinks = customProblemLinks;
+      let finalUseCustomLinks = useCustomLinks;
+      
+      if (!finalCustomProblemLinks && roomConfig.use_custom_links && roomConfig.custom_problem_links) {
+        console.log('🔄 Using custom links from room config as fallback');
+        finalCustomProblemLinks = roomConfig.custom_problem_links;
+        finalUseCustomLinks = roomConfig.use_custom_links;
+      }
+
+      // Verify user is room creator (check config first, then invites as fallback)
+      let roomCreatorId = roomConfig.created_by;
+      
+      // If no creator in config, try to get from invites
+      if (!roomCreatorId) {
+        const invites = await db.getRoomInvites(roomId);
+        if (invites && invites.length > 0) {
+          roomCreatorId = invites[0].inviter_clerk_id;
+        }
+      }
+      
+      // If still no creator found, the room doesn't exist or is invalid
+      if (!roomCreatorId) {
+        return res.status(404).json({ error: 'Room not found or invalid' });
+      }
+      
       if (roomCreatorId !== req.userId) {
         return res.status(403).json({ error: 'Only room creator can start the game' });
       }
+
+      // Get invites for participants (may be empty for solo testing)
+      const invites = await db.getRoomInvites(roomId);
 
       const gameStartTime = new Date().toISOString();
       
@@ -302,13 +345,116 @@ class RoomController {
         game_started_at: gameStartTime
       });
 
-      const participants = invites.filter(invite => invite.status === 'accepted');
+      // Prepare participants for arena session
+      const acceptedInvites = invites ? invites.filter(invite => invite.status === 'accepted') : [];
+      
+      // Get room creator's handle
+      let creatorHandle = 'Unknown';
+      if (invites && invites.length > 0) {
+        creatorHandle = invites[0].inviter_handle;
+      } else {
+        // Fetch creator's handle from user service if no invites exist
+        try {
+          const userServiceUrl = process.env.USER_SERVICE_URL || 'http://localhost:3002';
+          const userResponse = await fetch(`${userServiceUrl}/api/user/details?clerkId=${roomCreatorId}`);
+          if (userResponse.ok) {
+            const userData = await userResponse.json();
+            creatorHandle = userData.codeforces_handle || 'Unknown';
+          }
+        } catch (error) {
+          console.error('Failed to fetch creator handle:', error);
+        }
+      }
+      
+      const participants = [
+        // Add room creator as host1
+        {
+          clerk_id: roomCreatorId,
+          codeforces_handle: creatorHandle,
+          team_type: 'host'
+        },
+        // Add accepted invites
+        ...acceptedInvites.map(invite => ({
+          clerk_id: invite.invited_clerk_id,
+          codeforces_handle: invite.invited_handle,
+          team_type: invite.slot_type
+        }))
+      ];
 
-      res.json({
-        success: true,
-        gameStartTime,
-        participants
-      });
+      // Create arena session via arena service
+      try {
+        const arenaServiceUrl = process.env.ARENA_SERVICE_URL || 'http://localhost:3004';
+        console.log('Creating arena session via:', `${arenaServiceUrl}/api/arena/session`);
+        
+        console.log('🎯 Calling arena service at:', `${arenaServiceUrl}/api/arena/session`);
+        console.log('🎯 Arena payload:', {
+          roomId,
+          questionsLength: questions?.length || 0,
+          customProblemLinks: finalCustomProblemLinks || null,
+          useCustomLinks: finalUseCustomLinks || false,
+          participantsCount: participants.length
+        });
+
+        const arenaResponse = await fetch(`${arenaServiceUrl}/api/arena/session`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': req.headers.authorization // Forward auth header
+          },
+          body: JSON.stringify({
+            roomId,
+            questions: questions || [],
+            config: roomConfig,
+            participants,
+            customProblemLinks: finalCustomProblemLinks || null,
+            useCustomLinks: finalUseCustomLinks || false
+          })
+        });
+
+        console.log('🎯 Arena service response status:', arenaResponse.status);
+
+        if (!arenaResponse.ok) {
+          let errorData;
+          try {
+            errorData = await arenaResponse.json();
+          } catch (jsonError) {
+            const textResponse = await arenaResponse.text();
+            console.error('❌ Arena service non-JSON error response:', textResponse);
+            errorData = { error: `Arena service error: ${arenaResponse.status} - ${textResponse}` };
+          }
+          console.error('❌ Arena service error:', errorData);
+          throw new Error(errorData.error || 'Failed to create arena session');
+        }
+
+        const arenaData = await arenaResponse.json();
+        console.log('✅ Arena session created successfully:', {
+          sessionId: arenaData.session?.id,
+          useCustomLinks: arenaData.session?.use_custom_links,
+          customLinksLength: arenaData.session?.custom_problem_links?.length || 0
+        });
+
+        // Verify the arena session was created with correct custom links data
+        if (finalUseCustomLinks && (!arenaData.session?.use_custom_links || !arenaData.session?.custom_problem_links)) {
+          console.error('⚠️ Arena session created but custom links data missing');
+        }
+
+        res.json({
+          success: true,
+          gameStartTime,
+          participants,
+          arenaSession: arenaData.session
+        });
+      } catch (arenaError) {
+        console.error('Failed to create arena session:', arenaError);
+        // Fallback to original behavior if arena service is unavailable
+        res.json({
+          success: true,
+          gameStartTime,
+          participants,
+          arenaSession: null,
+          warning: 'Arena session creation failed, using fallback mode'
+        });
+      }
     } catch (err) {
       next(err);
     }

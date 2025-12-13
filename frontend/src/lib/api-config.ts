@@ -34,6 +34,29 @@ export const API_CONFIG = {
     
     // Verify Service (proxy)
     VERIFY: '/api/verify',
+    
+    // Arena Service
+    ARENA: {
+      SESSION: '/api/arena/session',
+      SUBMIT: '/api/arena/submit',
+      LEADERBOARD: '/api/arena/leaderboard',
+      TEAM_STATS: '/api/arena/team-stats',
+      PARTICIPANTS: '/api/arena/participants',
+      SUBMISSIONS: '/api/arena/submissions',
+      SYNC: '/api/arena/sync',
+    },
+
+    // Points Service
+    POINTS: {
+      USER_RATING: '/api/points/rating',
+      USER_POINTS: '/api/points/user',
+      RATING_HISTORY: '/api/points/rating-history',
+      CALCULATE_RATINGS: '/api/points/calculate-ratings',
+      APPLY_RATINGS: '/api/points/apply-ratings',
+      FINALIZE_SESSION: '/api/points/finalize-session',
+      LEADERBOARD_RATING: '/api/points/leaderboard/rating',
+      LEADERBOARD_GLOBAL: '/api/points/leaderboard/global'
+    },
   }
 };
 
