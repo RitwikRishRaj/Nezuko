@@ -1,0 +1,29 @@
+{
+  "name": "algogym-backend",
+  "version": "1.0.0",
+  "description": "AlgoGym Backend Microservices",
+  "scripts": {
+    "start": "node start-services.js",
+    "dev": "node start-services.js",
+    "check": "node check-services.js",
+    "install-all": "npm run install-gateway && npm run install-room && npm run install-user && npm run install-question && npm run install-verify",
+    "install-gateway": "cd api-gateway && npm install",
+    "install-room": "cd microservices/room-service && npm install",
+    "install-user": "cd microservices/user-service && npm install",
+    "install-question": "cd microservices/question-service && npm install",
+    "install-verify": "cd microservices/verify-codeforces-service && npm install",
+    "docker:build": "docker-compose build",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f",
+    "test-all": "npm run test-room && npm run test-user",
+    "test-room": "cd microservices/room-service && npm test",
+    "test-user": "cd microservices/user-service && npm test"
+  },
+  "keywords": ["microservices", "backend", "api", "algogym"],
+  "author": "AlgoGym Team",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
