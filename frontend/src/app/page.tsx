@@ -13,31 +13,45 @@ import {
 } from "@/components/ui/resizable-navbar";
 import { Footer } from '@/components/footer-section';
 import { InteractiveHoverButton } from "@/components/ui/interactive-hover-button";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import MagicBento from "@/components/MagicBento";
 import { useUser, useClerk } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase";
+import { useUserStore } from "@/lib/store";
 
-export default function HomePage() {
+export default function LandingPage() {
   const navItems = [
-    {
-      name: "Features",
-      link: "#features",
-    },
-    {
-      name: "Pricing",
-      link: "#pricing",
-    },
-    {
-      name: "Contact",
-      link: "#contact",
-    },
+    { name: "Features", link: "#features" },
+    { name: "Pricing", link: "#pricing" },
+    { name: "Contact", link: "#contact" },
   ];
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const { isSignedIn } = useUser();
+  const { isLoaded, isSignedIn, user } = useUser();
   const { signOut, openSignIn } = useClerk();
   const router = useRouter();
+  const { setVerified, setChecking } = useUserStore();
+
+  // Check Supabase verified status once the user is loaded
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn || !user) return;
+
+    setChecking(true);
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from("users")
+          .select("is_verified")
+          .eq("clerk_id", user.id)
+          .maybeSingle();
+
+        setVerified(!!data?.is_verified);
+      } catch {
+        setVerified(false);
+      }
+    })();
+  }, [isLoaded, isSignedIn, user, setVerified, setChecking]);
 
   const handleMobileLogin = () => {
     setIsMobileMenuOpen(false);
@@ -45,8 +59,8 @@ export default function HomePage() {
       signOut(() => router.push('/'));
     } else {
       openSignIn({
-        forceRedirectUrl: '/verify',
-        fallbackRedirectUrl: '/verify'
+        forceRedirectUrl: '/',
+        fallbackRedirectUrl: '/'
       });
     }
   };

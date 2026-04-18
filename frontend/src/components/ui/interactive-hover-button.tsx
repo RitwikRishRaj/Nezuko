@@ -4,6 +4,7 @@ import React from "react";
 import { useUser, useClerk } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { useUserStore } from "@/lib/store";
 
 interface InteractiveHoverButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -22,19 +23,35 @@ const InteractiveHoverButton = React.forwardRef<
   InteractiveHoverButtonProps
 >(({ text = "Login", className, ...props }, ref) => {
   const { isSignedIn } = useUser();
-  const { signOut, openSignIn } = useClerk();
+  const { openSignIn } = useClerk();
   const router = useRouter();
+  const { verified, checking } = useUserStore();
 
   const handleClick = () => {
     if (isSignedIn) {
-      signOut(() => router.push('/'));
+      if (checking) return; // wait for the check to finish
+      if (verified) {
+        router.push('/home');
+      } else {
+        router.push('/verify');
+      }
     } else {
+      // Redirect back to landing after sign-in; landing page runs the check
       openSignIn({
-        forceRedirectUrl: '/verify',
-        fallbackRedirectUrl: '/verify'
+        forceRedirectUrl: '/',
+        fallbackRedirectUrl: '/',
       });
     }
   };
+
+  // Label logic
+  const label = isSignedIn
+    ? checking
+      ? '...'
+      : verified
+        ? 'Go to App'
+        : 'Verify'
+    : text;
 
   return (
     <button
@@ -47,10 +64,10 @@ const InteractiveHoverButton = React.forwardRef<
       {...props}
     >
       <span className="inline-block translate-x-1 text-black transition-all duration-300 group-hover:translate-x-12 group-hover:opacity-0">
-        {isSignedIn ? 'Sign Out' : text}
+        {label}
       </span>
       <div className="absolute top-0 z-10 flex h-full w-full translate-x-12 items-center justify-center gap-2 text-white opacity-0 transition-all duration-300 group-hover:-translate-x-1 group-hover:opacity-100">
-        <span className="text-white">{isSignedIn ? 'Sign Out' : text}</span>
+        <span className="text-white">{label}</span>
         <ArrowIcon />
       </div>
       <div className="absolute left-[20%] top-[40%] h-2 w-2 scale-[1] rounded-lg bg-primary transition-all duration-300 group-hover:left-[0%] group-hover:top-[0%] group-hover:h-full group-hover:w-full group-hover:scale-[1.8] group-hover:bg-primary"></div>

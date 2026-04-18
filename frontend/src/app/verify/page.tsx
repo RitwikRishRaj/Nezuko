@@ -1,10 +1,25 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import {
+  useState,
+  useRef,
+  useEffect,
+  type CSSProperties,
+  type ChangeEvent,
+  type KeyboardEvent,
+} from "react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase";
+import { useUserStore } from "@/lib/store";
 
-type Problem = { name: string; contest: string; index: string };
+interface Problem {
+  name: string;
+  contest: string;
+  index: string;
+}
+
+type VerifyStatus = "loading" | "success" | "fail";
 
 async function fetchChallengeProblem(): Promise<Problem> {
   const res = await fetch(
@@ -14,327 +29,354 @@ async function fetchChallengeProblem(): Promise<Problem> {
   return res.json();
 }
 
+async function checkVerification(handle: string, problem: Problem): Promise<boolean> {
+  const res = await fetch(
+    `${process.env.NEXT_PUBLIC_API_GATEWAY_URL}/api/verify`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        handle,
+        contestId: Number(problem.contest),
+        index: problem.index,
+      }),
+    }
+  );
+  const data = await res.json() as { success?: boolean };
+  return res.ok && !!data.success;
+}
 
-type State = "idle" | "verifying" | "success" | "failed";
+/* ─── tiny icon components ─── */
+
+function CheckIcon({ color }: { color: string }) {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ flexShrink: 0 }}>
+      <circle cx="6" cy="6" r="5.25" stroke={color} strokeWidth="0.5" />
+      <path d="M3.5 6l2 2 3-3" stroke={color} strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function CrossIcon({ color }: { color: string }) {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ flexShrink: 0 }}>
+      <circle cx="6" cy="6" r="5.25" stroke={color} strokeWidth="0.5" />
+      <path d="M4 4l4 4M8 4l-4 4" stroke={color} strokeWidth="1" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+/* ─── styles ─── */
+
+const styles: Record<string, CSSProperties> = {
+  page: {
+    minHeight: "100vh",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "#000",
+    padding: "2rem",
+  },
+  dialog: {
+    background: "#000",
+    border: "0.5px solid #2a2a2a",
+    borderRadius: "10px",
+    width: "340px",
+    padding: "28px",
+    fontFamily: "'JetBrains Mono', 'Fira Mono', monospace",
+  },
+  header: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    marginBottom: "24px",
+  },
+  dot: {
+    width: "6px",
+    height: "6px",
+    borderRadius: "50%",
+    flexShrink: 0,
+    transition: "background 0.4s, opacity 0.4s",
+  } as CSSProperties,
+  title: {
+    fontSize: "11px",
+    fontWeight: 500,
+    letterSpacing: "0.06em",
+    textTransform: "uppercase",
+    transition: "color 0.4s",
+  },
+  label: {
+    fontSize: "10px",
+    color: "#444",
+    display: "block",
+    marginBottom: "6px",
+    letterSpacing: "0.08em",
+    textTransform: "uppercase",
+  },
+  input: {
+    width: "100%",
+    boxSizing: "border-box",
+    background: "#0d0d0d",
+    border: "0.5px solid #222",
+    borderRadius: "6px",
+    padding: "9px 12px",
+    fontFamily: "inherit",
+    fontSize: "13px",
+    color: "#e0e0e0",
+    outline: "none",
+    marginBottom: "20px",
+    transition: "border-color 0.2s",
+  },
+  problemCard: {
+    background: "#0d0d0d",
+    border: "0.5px solid #1e1e1e",
+    borderRadius: "6px",
+    padding: "12px 14px",
+    marginBottom: "20px",
+  },
+  problemCardLabel: {
+    fontSize: "10px",
+    color: "#444",
+    letterSpacing: "0.08em",
+    textTransform: "uppercase",
+    marginBottom: "8px",
+  },
+  problemLink: {
+    fontSize: "13px",
+    color: "#7aa2f7",
+    textDecoration: "none",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "6px",
+    fontWeight: 500,
+  },
+  problemHint: {
+    fontSize: "10px",
+    color: "#444",
+    marginTop: "5px",
+    lineHeight: 1.5,
+  },
+  button: {
+    width: "100%",
+    background: "transparent",
+    color: "#888",
+    border: "0.5px solid #2a2a2a",
+    borderRadius: "6px",
+    padding: "10px",
+    fontFamily: "inherit",
+    fontSize: "12px",
+    fontWeight: 400,
+    letterSpacing: "0.06em",
+    textTransform: "uppercase" as const,
+    cursor: "pointer",
+    marginBottom: "14px",
+    transition: "opacity 0.15s, border-color 0.2s, color 0.2s",
+  },
+  statusBox: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    borderRadius: "6px",
+    padding: "10px 14px",
+    fontSize: "11px",
+  },
+  statusLoading: {
+    background: "#0d0d0d",
+    border: "0.5px solid #2a2a2a",
+    color: "#555",
+  },
+  statusSuccess: {
+    background: "#051a0e",
+    border: "0.5px solid #0f3d1f",
+    color: "#4ade80",
+  },
+  statusFail: {
+    background: "#1a0505",
+    border: "0.5px solid #3d0f0f",
+    color: "#f87171",
+  },
+  loadingDot: {
+    width: "7px",
+    height: "7px",
+    borderRadius: "50%",
+    background: "#333",
+    flexShrink: 0,
+  },
+};
+
+/* ─── main page ─── */
 
 export default function VerifyPage() {
-  const { isLoaded, isSignedIn } = useUser();
+  const { isLoaded, isSignedIn, user } = useUser();
   const router = useRouter();
+  const { setVerified } = useUserStore();
 
-  const [handle, setHandle] = useState("");
-  const [state, setState] = useState<State>("idle");
+  const [handle, setHandle] = useState<string>("");
   const [problem, setProblem] = useState<Problem | null>(null);
-  const [dots, setDots] = useState(0);
-  const [failReason, setFailReason] = useState("");
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const startTimeRef = useRef<number>(0);
+  const [status, setStatus] = useState<VerifyStatus | null>(null);
+  const [inputError, setInputError] = useState<boolean>(false);
+  const phaseRef = useRef<number>(0);
 
   // Redirect unauthenticated users
   useEffect(() => {
-    if (isLoaded && !isSignedIn) {
-      router.push("/");
-    }
+    if (isLoaded && !isSignedIn) router.push("/");
   }, [isLoaded, isSignedIn, router]);
 
-  // Animated dots while verifying
+  // Redirect to /home after success
   useEffect(() => {
-    if (state !== "verifying") return;
-    const interval = setInterval(() => setDots((d) => (d + 1) % 4), 400);
-    return () => clearInterval(interval);
-  }, [state]);
-
-  // Cleanup polling on unmount
-  useEffect(() => {
-    return () => {
-      if (pollingRef.current) clearInterval(pollingRef.current);
-    };
-  }, []);
-
-  const stopPolling = useCallback(() => {
-    if (pollingRef.current) {
-      clearInterval(pollingRef.current);
-      pollingRef.current = null;
+    if (status === "success") {
+      const t = setTimeout(() => router.push("/home"), 1500);
+      return () => clearTimeout(t);
     }
-  }, []);
+  }, [status, router]);
 
-  const pollVerification = useCallback(
-    async (currentHandle: string, currentProblem: Problem) => {
-      try {
-        const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_GATEWAY_URL}/api/verify`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              handle: currentHandle,
-              contestId: Number(currentProblem.contest),
-              index: currentProblem.index,
-            }),
-          }
-        );
-
-        const data = await res.json() as {
-          success?: boolean;
-          message?: string;
-          error?: string;
-        };
-
-        if (res.ok && data.success) {
-          stopPolling();
-          setState("success");
-          return;
-        }
-
-        // Timeout after 3 minutes
-        if (Date.now() - startTimeRef.current > 3 * 60 * 1000) {
-          stopPolling();
-          setFailReason("timeout — no matching submission");
-          setState("failed");
-        }
-      } catch {
-        // Network errors — keep polling
-      }
-    },
-    [stopPolling]
-  );
-
-  const handleSubmit = useCallback(async () => {
-    if (!handle.trim()) return;
-    setState("verifying");
-
-    const selectedProblem = await fetchChallengeProblem();
-    setProblem(selectedProblem);
-    startTimeRef.current = Date.now();
-
-    // Poll every 5 seconds
-    pollingRef.current = setInterval(() => {
-      pollVerification(handle.trim(), selectedProblem);
-    }, 5000);
-
-    // Immediate first check after 3s
-    setTimeout(() => {
-      pollVerification(handle.trim(), selectedProblem);
-    }, 3000);
-  }, [handle, pollVerification]);
-
-  const handleRetry = useCallback(() => {
-    stopPolling();
-    setProblem(null);
-    setState("idle");
-  }, [stopPolling]);
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
-      if (state === "idle") handleSubmit();
-      else if (state === "failed") handleRetry();
-    }
+  const handleInputChange = (e: ChangeEvent<HTMLInputElement>): void => {
+    setHandle(e.target.value);
+    // Clear any previous fail status so the error doesn't linger while typing
+    if (status === "fail") setStatus(null);
   };
 
-  const problemUrl = problem
-    ? `https://codeforces.com/problemset/problem/${problem.contest}/${problem.index}`
-    : "#";
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>): void => {
+    if (e.key === "Enter") handleVerify();
+  };
+
+  const handleVerify = async (): Promise<void> => {
+    if (!handle.trim()) {
+      setInputError(true);
+      setTimeout(() => setInputError(false), 1200);
+      return;
+    }
+
+    // Fetch and lock a problem on first click
+    let assigned = problem;
+    if (!assigned) {
+      try {
+        assigned = await fetchChallengeProblem();
+        setProblem(assigned);
+      } catch {
+        setStatus("fail");
+        return;
+      }
+    }
+
+    setStatus("loading");
+    phaseRef.current += 1;
+    const myPhase = phaseRef.current;
+
+    const ok = await checkVerification(handle.trim(), assigned);
+    if (phaseRef.current !== myPhase) return;
+
+    if (ok) {
+      // Persist to Supabase: upsert codeforces_handle + is_verified
+      if (user) {
+        await supabase.from("users").upsert(
+          {
+            clerk_id: user.id,
+            codeforces_handle: handle.trim(),
+            is_verified: true,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "clerk_id" }
+        );
+      }
+      setVerified(true); // update Zustand so the landing button reflects it
+    }
+
+    setStatus(ok ? "success" : "fail");
+  };
 
   if (!isLoaded || !isSignedIn) return null;
 
+  const verified = status === "success";
+  const problemUrl = problem
+    ? `https://codeforces.com/problemset/problem/${problem.contest}/${problem.index}`
+    : "#";
+  const problemLabel = problem
+    ? `CF ${problem.contest}${problem.index} — ${problem.name}`
+    : "";
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-black p-4">
-      {/* Main dialogue box */}
-      <div
-        className="w-full max-w-xs rounded-sm border border-[#1a1a1a] bg-[#0a0a0a] shadow-2xl"
-        style={{
-          fontFamily: "'JetBrains Mono', 'Fira Code', 'SF Mono', monospace",
-        }}
-      >
-        {/* Title bar */}
-        <div className="flex items-center gap-2 border-b border-[#1a1a1a] px-5 py-3">
-          <div className="flex gap-1.5">
-            <div className="h-2 w-2 rounded-full bg-[#2a2a2a]" />
-            <div className="h-2 w-2 rounded-full bg-[#2a2a2a]" />
-            <div className="h-2 w-2 rounded-full bg-[#2a2a2a]" />
+    <div style={styles.page}>
+      <div style={styles.dialog}>
+        {/* Header */}
+        <div style={styles.header}>
+          <div
+            style={{
+              ...styles.dot,
+              background: verified ? "#4ade80" : "#fff",
+              opacity: verified ? 1 : 0.15,
+            }}
+          />
+          <span style={{ ...styles.title, color: verified ? "#4ade80" : "#aaa" }}>
+            Verify Codeforces Account
+          </span>
+        </div>
+
+        {/* Handle input — hidden after success */}
+        {!verified && (
+          <div>
+            <label style={styles.label}>Handle</label>
+            <input
+              type="text"
+              placeholder="e.g. tourist"
+              value={handle}
+              onChange={handleInputChange}
+              onKeyDown={handleKeyDown}
+              autoFocus
+              spellCheck={false}
+              autoComplete="off"
+              style={{
+                ...styles.input,
+                borderColor: inputError ? "#3d0f0f" : "#222",
+              }}
+            />
           </div>
-          <span className="ml-2 text-[11px] tracking-widest text-[#333] uppercase select-none">
-            verify
-          </span>
-        </div>
+        )}
 
-        {/* Body */}
-        <div className="px-6 py-8 space-y-7">
-          {/* Handle input — visible in idle and failed states */}
-          {(state === "idle" || state === "failed") && (
-            <label className="block">
-              <span className="text-[11px] uppercase tracking-[0.2em] text-[#444]">
-                Codeforces Handle
-              </span>
-              <div className="mt-3">
-                <input
-                  type="text"
-                  value={handle}
-                  onChange={(e) => {
-                    setHandle(e.target.value);
-                    if (state === "failed") setState("idle");
-                  }}
-                  onKeyDown={handleKeyDown}
-                  placeholder="tourist"
-                  spellCheck={false}
-                  autoComplete="off"
-                  autoFocus
-                  className="w-2/3 bg-transparent text-sm text-white placeholder-[#222] outline-none border-b border-[#1a1a1a] focus:border-[#333] pb-1.5 transition-colors duration-300"
-                />
-              </div>
-            </label>
-          )}
+        {/* Problem card — shown only after first Verify click, hidden after success */}
+        {problem && !verified && (
+          <div style={styles.problemCard}>
+            <div style={styles.problemCardLabel}>Submit a compile error on</div>
+            <a href={problemUrl} target="_blank" rel="noreferrer" style={styles.problemLink}>
+              {problemLabel}
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                <path d="M1 9L9 1M9 1H3M9 1V7" stroke="#7aa2f7" strokeWidth="1" strokeLinecap="round" />
+              </svg>
+            </a>
+            <div style={styles.problemHint}>Submit any code that fails to compile.</div>
+          </div>
+        )}
 
-          {/* Idle — Continue button */}
-          {state === "idle" && (
-            <div className="flex justify-center">
-              <button
-                onClick={handleSubmit}
-                disabled={!handle.trim()}
-                className="w-1/3 cursor-pointer rounded-sm border border-[#1a1a1a] bg-[#0e0e0e] py-2.5 text-[11px] uppercase tracking-[0.2em] text-[#999] transition-all duration-300 hover:border-[#333] hover:text-white disabled:opacity-20 disabled:cursor-not-allowed disabled:hover:border-[#1a1a1a] disabled:hover:text-[#999]"
-              >
-                Continue
-              </button>
-            </div>
-          )}
+        {/* Verify button — hidden after success */}
+        {!verified && (
+          <button
+            onClick={handleVerify}
+            disabled={status === "loading"}
+            style={{ ...styles.button, opacity: status === "loading" ? 0.4 : 1 }}
+          >
+            {status === "loading" ? "Checking…" : "Verify"}
+          </button>
+        )}
 
-          {/* Verifying state */}
-          {state === "verifying" && (
-            <div className="space-y-5 pt-1">
-              {/* Handle echo */}
-              <div>
-                <span className="text-[11px] uppercase tracking-[0.2em] text-[#333]">
-                  Handle
-                </span>
-                <p className="text-sm text-[#888] pt-1">{handle}</p>
-              </div>
-
-              <div className="space-y-1">
-                <span className="text-[11px] uppercase tracking-[0.2em] text-[#444]">
-                  Submit a compilation error to
-                </span>
-                <div className="pt-1">
-                  {problem ? (
-                    <a
-                      href={problemUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm text-[#c8c8c8] underline decoration-[#333] underline-offset-4 transition-colors duration-200 hover:text-white hover:decoration-[#666]"
-                    >
-                      {problem.contest}{problem.index} — {problem.name}
-                    </a>
-                  ) : (
-                    <span className="text-sm text-[#555]">fetching problem…</span>
-                  )}
-                </div>
-              </div>
-
-              {/* Waiting indicator */}
-              <div className="flex items-center gap-3 pt-2">
-                <div className="relative h-3 w-3">
-                  <div className="absolute inset-0 animate-ping rounded-full bg-[#333]" />
-                  <div className="absolute inset-0.5 rounded-full bg-[#555]" />
-                </div>
-                <span className="text-[11px] tracking-wider text-[#333]">
-                  waiting for submission{".".repeat(dots)}
-                </span>
-              </div>
-            </div>
-          )}
-
-          {/* Success state */}
-          {state === "success" && (
-            <div className="space-y-4 pt-1">
-              <div className="flex items-center gap-3">
-                <svg
-                  className="h-4 w-4 text-[#4ade80]"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth={2.5}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-                <span className="text-[11px] uppercase tracking-[0.2em] text-[#4ade80]/70">
-                  Verified
-                </span>
-              </div>
-              <div className="border-t border-[#1a1a1a] pt-4 space-y-1">
-                <span className="text-[11px] uppercase tracking-[0.2em] text-[#333]">
-                  Handle
-                </span>
-                <p className="text-sm text-white pt-0.5">{handle}</p>
-              </div>
-              <div className="flex justify-center">
-                <button
-                  onClick={() => router.push("/dashboard")}
-                  className="w-2/3 cursor-pointer rounded-sm border border-[#1a1a1a] bg-[#0e0e0e] py-2.5 text-[11px] uppercase tracking-[0.2em] text-[#999] transition-all duration-300 hover:border-[#333] hover:text-white"
-                >
-                  Continue
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Failed state */}
-          {state === "failed" && (
-            <div className="space-y-4 pt-1">
-              <div className="flex items-center gap-3">
-                <svg
-                  className="h-4 w-4 text-[#f87171]"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth={2.5}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-                <span className="text-[11px] uppercase tracking-[0.2em] text-[#f87171]/70">
-                  Failed
-                </span>
-              </div>
-              <div className="border-t border-[#1a1a1a] pt-4">
-                <span className="text-[11px] tracking-wider text-[#555]">
-                  {failReason}
-                </span>
-              </div>
-              <div className="flex justify-center">
-                <button
-                  onClick={handleRetry}
-                  className="w-1/3 cursor-pointer rounded-sm border border-[#1a1a1a] bg-[#0e0e0e] py-2.5 text-[11px] uppercase tracking-[0.2em] text-[#999] transition-all duration-300 hover:border-[#333] hover:text-white"
-                >
-                  Retry
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Bottom status bar */}
-        <div className="border-t border-[#1a1a1a] px-5 py-2.5 flex items-center justify-between">
-          <span className="text-[10px] text-[#222] tracking-wider select-none">
-            codeforces.com
-          </span>
-          {state === "success" && (
-            <span className="text-[10px] text-[#4ade80]/40 tracking-wider select-none">
-              ● connected
-            </span>
-          )}
-          {state === "verifying" && (
-            <span className="text-[10px] text-[#333] tracking-wider select-none animate-pulse">
-              ● listening
-            </span>
-          )}
-          {state === "failed" && (
-            <span className="text-[10px] text-[#f87171]/40 tracking-wider select-none">
-              ● disconnected
-            </span>
-          )}
-        </div>
+        {/* Status bar */}
+        {status === "loading" && (
+          <div style={{ ...styles.statusBox, ...styles.statusLoading }}>
+            <span style={styles.loadingDot} />
+            Checking last submission…
+          </div>
+        )}
+        {status === "success" && (
+          <div style={{ ...styles.statusBox, ...styles.statusSuccess }}>
+            <CheckIcon color="#4ade80" />
+            Identity confirmed. Redirecting…
+          </div>
+        )}
+        {status === "fail" && (
+          <div style={{ ...styles.statusBox, ...styles.statusFail }}>
+            <CrossIcon color="#f87171" />
+            No compile error found. Try again.
+          </div>
+        )}
       </div>
     </div>
   );

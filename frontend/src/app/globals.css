@@ -32,6 +32,43 @@
   transition: background-color 0.3s ease, border-color 0.3s ease;
 }
 
+/* ─── Sidebar ─── */
+.sidebar-transition {
+  transition: width 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sidebar-scroll::-webkit-scrollbar {
+  width: 0;
+}
+
+/* Nav label show/hide */
+.nav-label {
+  white-space: nowrap;
+  overflow: hidden;
+  transition: opacity 0.18s ease, max-width 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.nav-label-visible {
+  opacity: 1;
+  max-width: 140px;
+}
+.nav-label-hidden {
+  opacity: 0;
+  max-width: 0;
+}
+
+/* Tooltip on collapsed sidebar */
+.nav-tooltip {
+  pointer-events: none;
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  white-space: nowrap;
+}
+.nav-item:hover .nav-tooltip {
+  opacity: 1;
+  transform: translateX(0);
+}
+
 @custom-variant dark (&:is(.dark *));
 @source "../**/*.{ts,tsx,js,jsx,mdx}";
 

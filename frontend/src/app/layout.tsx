@@ -16,6 +16,10 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Algogym",
   description: "Competitive programming platform",
+  icons: {
+    icon: "/algogym_logo.svg",
+    shortcut: "/algogym_logo.svg",
+  },
 };
 
 export default function RootLayout({
