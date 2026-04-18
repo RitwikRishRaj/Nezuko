@@ -3,45 +3,20 @@
 import { memo } from "react";
 import Image from "next/image";
 import {
-  Swords,
-  Bell,
-  Mail,
-  Settings,
+  LayoutDashboard,
+  MessageSquare,
   ChevronsLeft,
   ChevronsRight,
   Lock,
   Unlock,
-  MessageCircle,
 } from "lucide-react";
 
-const LeaderboardIcon = ({ size, strokeWidth, className }: { size?: number | string, strokeWidth?: number | string, className?: string }) => (
-  <svg 
-    width={size || 24} 
-    height={size || 24} 
-    strokeWidth={strokeWidth || 1.5} 
-    viewBox="0 0 24 24" 
-    fill="none" 
-    xmlns="http://www.w3.org/2000/svg"
-    className={className}
-    stroke="currentColor"
-  >
-    <path d="M15 21H9V12.6C9 12.2686 9.26863 12 9.6 12H14.4C14.7314 12 15 12.2686 15 12.6V21Z" strokeLinecap="round" strokeLinejoin="round"/>
-    <path d="M20.4 21H15V18.1C15 17.7686 15.2686 17.5 15.6 17.5H20.4C20.7314 17.5 21 17.7686 21 18.1V20.4C21 20.7314 20.7314 21 20.4 21Z" strokeLinecap="round" strokeLinejoin="round"/>
-    <path d="M9 21V16.1C9 15.7686 8.73137 15.5 8.4 15.5H3.6C3.26863 15.5 3 15.7686 3 16.1V20.4C3 20.7314 3.26863 21 3.6 21H9Z" strokeLinecap="round" strokeLinejoin="round"/>
-    <path d="M10.8056 5.11325L11.7147 3.1856C11.8314 2.93813 12.1686 2.93813 12.2853 3.1856L13.1944 5.11325L15.2275 5.42427C15.4884 5.46418 15.5923 5.79977 15.4035 5.99229L13.9326 7.4917L14.2797 9.60999C14.3243 9.88202 14.0515 10.0895 13.8181 9.96099L12 8.96031L10.1819 9.96099C9.94851 10.0895 9.67568 9.88202 9.72026 9.60999L10.0674 7.4917L8.59651 5.99229C8.40766 5.79977 8.51163 5.46418 8.77248 5.42427L10.8056 5.11325Z" strokeLinecap="round" strokeLinejoin="round"/>
-  </svg>
-);
-
 const navItems = [
-  { id: "arena", label: "Arena", icon: Swords },
-  { id: "globalchat", label: "Global Chat", icon: MessageCircle },
-  { id: "leaderboard", label: "Leaderboard", icon: LeaderboardIcon },
-  { id: "notifications", label: "Alerts", icon: Bell, badge: 3 },
-  { id: "writetous", label: "Write to Us", icon: Mail },
-  { id: "settings", label: "Profile", icon: Settings },
+  { id: "overview", label: "Overview", icon: LayoutDashboard },
+  { id: "messages", label: "Messages", icon: MessageSquare, badge: 2 },
 ];
 
-interface SidebarProps {
+interface AdminSidebarProps {
   active: string;
   onActiveChange: (id: string) => void;
   expanded: boolean;
@@ -50,14 +25,14 @@ interface SidebarProps {
   onLockToggle: () => void;
 }
 
-const Sidebar = memo(function Sidebar({
+const AdminSidebar = memo(function AdminSidebar({
   active,
   onActiveChange,
   expanded,
   onExpandChange,
   locked,
   onLockToggle,
-}: SidebarProps) {
+}: AdminSidebarProps) {
   return (
     <aside
       className={`sidebar-transition fixed top-0 left-0 z-50 flex h-screen flex-col overflow-hidden ${
@@ -68,7 +43,7 @@ const Sidebar = memo(function Sidebar({
       <div className="flex h-12 items-center justify-center border-b border-white/[0.04] flex-shrink-0">
         <Image
           src="/algogym_logo.svg"
-          alt="Algogym"
+          alt="Algogym Admin"
           width={28}
           height={28}
           className="flex-shrink-0"
@@ -89,7 +64,7 @@ const Sidebar = memo(function Sidebar({
                 expanded ? "gap-2.5 px-2 py-[9px]" : "justify-center px-0 py-[9px]"
               } transition-colors duration-200 ${
                 isActive
-                  ? "bg-violet-500/[0.12] text-white"
+                  ? "bg-emerald-500/[0.12] text-white"
                   : "hover:bg-white/[0.06] hover:text-white"
               }`}
             >
@@ -100,7 +75,7 @@ const Sidebar = memo(function Sidebar({
                   strokeWidth={isActive ? 2 : 1.5}
                   className={`transition-colors duration-200 ${
                     isActive
-                      ? "text-violet-400"
+                      ? "text-emerald-400"
                       : "text-white/60 group-hover:text-white"
                   }`}
                 />
@@ -140,7 +115,7 @@ const Sidebar = memo(function Sidebar({
           title={locked ? "Unlock auto-expand" : "Lock sidebar (disable auto-expand)"}
           className={`flex w-full items-center justify-center rounded-lg py-2 transition-all duration-200 ${
             locked
-              ? "text-violet-400 bg-violet-500/[0.12] hover:bg-violet-500/[0.18]"
+              ? "text-emerald-400 bg-emerald-500/[0.12] hover:bg-emerald-500/[0.18]"
               : "text-white/70 hover:bg-white/[0.06] hover:text-white"
           }`}
         >
@@ -163,4 +138,4 @@ const Sidebar = memo(function Sidebar({
   );
 });
 
-export default Sidebar;
+export default AdminSidebar;

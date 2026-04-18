@@ -1,25 +1,17 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-/* Floating animation for gradient orbs */
+/* ─── Animations ─── */
 @keyframes float {
   0%, 100% { transform: translateY(0) translateX(0); }
-  50% { transform: translateY(-20px) translateX(10px); }
+  50%       { transform: translateY(-20px) translateX(10px); }
 }
 
-.animate-float {
-  animation: float 8s ease-in-out infinite;
-}
+.animate-float            { animation: float 8s ease-in-out infinite; }
+.animation-delay-2000     { animation-delay: 2s; }
+.animation-delay-4000     { animation-delay: 4s; }
 
-.animation-delay-2000 {
-  animation-delay: 2s;
-}
-
-.animation-delay-4000 {
-  animation-delay: 4s;
-}
-
-/* Glassmorphism base styles */
+/* ─── Glassmorphism base ─── */
 .glass {
   background: rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(10px);
@@ -27,36 +19,50 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-/* Smooth transitions */
-* {
-  transition: background-color 0.3s ease, border-color 0.3s ease;
-}
-
 /* ─── Sidebar ─── */
-.sidebar-transition {
-  transition: width 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+.sidebar-transition { transition: width 0.22s cubic-bezier(0.4, 0, 0.2, 1); }
+
+/* ─── Chat panel ─── */
+.chat-panel { transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1); }
+
+/* ─── Scrollbar hiders ─── */
+.sidebar-scroll::-webkit-scrollbar,
+.chat-scroll::-webkit-scrollbar { width: 0; }
+
+/* ─── Input hard reset (kills browser UA dark-mode ghost background) ─── */
+textarea.chat-input-reset,
+input.chat-input-reset {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent !important;
+  background-color: transparent !important;
+  color-scheme: dark;
+  border: none;
+  outline: none;
+  box-shadow: none;
+  resize: none;
 }
 
-.sidebar-scroll::-webkit-scrollbar {
-  width: 0;
+textarea.chat-input-reset:focus,
+textarea.chat-input-reset:active,
+input.chat-input-reset:focus,
+input.chat-input-reset:active {
+  background: transparent !important;
+  background-color: transparent !important;
+  outline: none;
+  box-shadow: none;
 }
 
-/* Nav label show/hide */
+/* ─── Nav label show/hide ─── */
 .nav-label {
   white-space: nowrap;
   overflow: hidden;
   transition: opacity 0.18s ease, max-width 0.22s cubic-bezier(0.4, 0, 0.2, 1);
 }
-.nav-label-visible {
-  opacity: 1;
-  max-width: 140px;
-}
-.nav-label-hidden {
-  opacity: 0;
-  max-width: 0;
-}
+.nav-label-visible { opacity: 1; max-width: 140px; }
+.nav-label-hidden  { opacity: 0; max-width: 0; }
 
-/* Tooltip on collapsed sidebar */
+/* ─── Tooltip on collapsed sidebar ─── */
 .nav-tooltip {
   pointer-events: none;
   opacity: 0;
@@ -64,15 +70,13 @@
   transition: opacity 0.15s ease, transform 0.15s ease;
   white-space: nowrap;
 }
-.nav-item:hover .nav-tooltip {
-  opacity: 1;
-  transform: translateX(0);
-}
+.nav-item:hover .nav-tooltip { opacity: 1; transform: translateX(0); }
 
+/* ─── CSS custom variant ─── */
 @custom-variant dark (&:is(.dark *));
 @source "../**/*.{ts,tsx,js,jsx,mdx}";
 
-/* Base styles */
+/* ─── Base layer ─── */
 @layer base {
   html {
     font-family: var(--font-sans);
@@ -85,22 +89,93 @@
     margin: 0;
     padding: 0;
     min-height: 100vh;
+    @apply bg-background text-foreground;
   }
+
+  *  { @apply border-border outline-ring/50; }
 
   h1, h2, h3, h4, h5, h6 {
     font-weight: 600;
     line-height: 1.25;
     margin: 0 0 var(--space-md) 0;
   }
-
   h1 { font-size: 2.25rem; }
   h2 { font-size: 1.875rem; }
   h3 { font-size: 1.5rem; }
   h4 { font-size: 1.25rem; }
+
+  p { margin: 0 0 var(--space-md) 0; line-height: 1.6; }
+
+  a {
+    color: var(--primary);
+    text-decoration: none;
+    transition: color 0.2s ease;
+  }
+  a:hover { color: var(--primary-dark); text-decoration: underline; }
+
+  button {
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 1rem;
+    font-weight: 500;
+    line-height: 1.5;
+    border: 1px solid transparent;
+    border-radius: var(--radius-md);
+    padding: var(--space-sm) var(--space-md);
+    transition: all 0.2s ease;
+  }
+  button:focus   { outline: 2px solid var(--primary); outline-offset: 2px; }
+  button:disabled { opacity: 0.6; cursor: not-allowed; }
 }
 
+/* ─── Components ─── */
+@layer components {
+  .card { background-color: var(--surface); border-radius: var(--radius-lg); box-shadow: var(--shadow); padding: var(--space-lg); }
+  .btn         { @apply px-4 py-2 rounded-md font-medium transition-colors duration-200; }
+  .btn-primary { @apply bg-indigo-600 text-white hover:bg-indigo-700; }
+  .btn-secondary { @apply bg-white text-gray-700 border border-gray-300 hover:bg-gray-50; }
+
+  .glass-container {
+    background: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    box-shadow:
+      0 8px 32px 0 rgba(31, 38, 135, 0.37),
+      inset 0 1px 0 rgba(255, 255, 255, 0.2),
+      0 0 0 1px rgba(255, 255, 255, 0.05);
+    position: relative;
+    overflow: hidden;
+  }
+  .glass-container::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+  }
+  .glass-container::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, transparent 50%, rgba(255, 255, 255, 0.05) 100%);
+    pointer-events: none;
+  }
+}
+
+/* ─── Dark mode overrides — inputs excluded from background override ─── */
+@media (prefers-color-scheme: dark) {
+  :root { --surface: #1f2937; --text: #f9fafb; --text-secondary: #9ca3af; }
+  body { color-scheme: dark; }
+  .btn-secondary { background-color: #374151; color: white; border-color: #4b5563; }
+  .btn-secondary:hover { background-color: #4b5563; }
+  /* Only apply dark bg to non-reset inputs */
+  input:not(.chat-input-reset),
+  textarea:not(.chat-input-reset),
+  select { background-color: #1f2937; border-color: #4b5563; color: white; }
+}
+
+/* ─── CSS custom properties ─── */
 :root {
-  /* Color palette */
   --primary: oklch(0.21 0.034 264.665);
   --primary-dark: #4338ca;
   --secondary: oklch(0.967 0.003 264.542);
@@ -110,28 +185,25 @@
   --text-secondary: #6b7280;
   --error: #ef4444;
 
-  /* Spacing scale */
   --space-xs: 0.25rem;
   --space-sm: 0.5rem;
   --space-md: 1rem;
   --space-lg: 1.5rem;
   --space-xl: 2rem;
 
-  /* Typography */
   --font-sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
 
-  /* Border radius */
   --radius-sm: 0.25rem;
   --radius-md: 0.5rem;
   --radius-lg: 1rem;
   --radius-full: 9999px;
 
-  /* Shadows */
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
   --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+
   --radius: 0.625rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.13 0.028 261.692);
@@ -145,6 +217,7 @@
   --muted-foreground: oklch(0.551 0.027 264.364);
   --accent-foreground: oklch(0.21 0.034 264.665);
   --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(1 0 0);
   --border: oklch(0.928 0.006 264.531);
   --input: oklch(0.928 0.006 264.531);
   --ring: oklch(0.707 0.022 261.325);
@@ -161,73 +234,6 @@
   --sidebar-accent-foreground: oklch(0.21 0.034 264.665);
   --sidebar-border: oklch(0.928 0.006 264.531);
   --sidebar-ring: oklch(0.707 0.022 261.325);
-  --destructive-foreground: oklch(1 0 0);
-}
-
-/* Keep your existing layers/utilities/components below as-is */
-@layer base {
-  p {
-    margin: 0 0 var(--space-md) 0;
-    line-height: 1.6;
-  }
-  a {
-    color: var(--primary);
-    text-decoration: none;
-    transition: color 0.2s ease;
-  }
-  a:hover { color: var(--primary-dark); text-decoration: underline; }
-  button { cursor: pointer; font-family: inherit; font-size: 1rem; font-weight: 500; line-height: 1.5; border: 1px solid transparent; border-radius: var(--radius-md); padding: var(--space-sm) var(--space-md); transition: all 0.2s ease; }
-  button:focus { outline: 2px solid var(--primary); outline-offset: 2px; }
-  button:disabled { opacity: 0.6; cursor: not-allowed; }
-}
-
-@layer components {
-  .card { background-color: var(--surface); border-radius: var(--radius-lg); box-shadow: var(--shadow); padding: var(--space-lg); }
-  .btn { @apply px-4 py-2 rounded-md font-medium transition-colors duration-200; }
-  .btn-primary { @apply bg-indigo-600 text-white hover:bg-indigo-700; }
-  .btn-secondary { @apply bg-white text-gray-700 border border-gray-300 hover:bg-gray-50; }
-
-  /* Enhanced Glass effect */
-  .glass-container {
-    background: rgba(255, 255, 255, 0.08);
-    backdrop-filter: blur(20px) saturate(180%);
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    box-shadow: 
-      0 8px 32px 0 rgba(31, 38, 135, 0.37),
-      inset 0 1px 0 rgba(255, 255, 255, 0.2),
-      0 0 0 1px rgba(255, 255, 255, 0.05);
-    position: relative;
-    overflow: hidden;
-  }
-
-  .glass-container::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
-  }
-
-  .glass-container::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, transparent 50%, rgba(255, 255, 255, 0.05) 100%);
-    pointer-events: none;
-  }
-}
-
-@media (prefers-color-scheme: dark) {
-  :root { --surface: #1f2937; --text: #f9fafb; --text-secondary: #9ca3af; }
-  body { color-scheme: dark; }
-  .btn-secondary { background-color: #374151; color: white; border-color: #4b5563; }
-  .btn-secondary:hover { background-color: #4b5563; }
-  input, textarea, select { background-color: #1f2937; border-color: #4b5563; color: white; }
 }
 
 @theme inline {
@@ -250,6 +256,7 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -269,66 +276,9 @@
   --animate-fade-scale: fade-scale 0.2s ease-out;
 
   @keyframes fade-scale {
-    0% {
-      opacity: 0;
-      transform: translateY(-50%) scale(0.95);
-    }
-    100% {
-      opacity: 1;
-      transform: translateY(-50%) scale(1);
-    }
+    0%   { opacity: 0; transform: translateY(-50%) scale(0.95); }
+    100% { opacity: 1; transform: translateY(-50%) scale(1); }
   }
-  @keyframes fade-scale {
-  0% {
-    opacity: 0;
-    transform: translateY(-50%) scale(0.95);
-    }
-  100% {
-    opacity: 1;
-    transform: translateY(-50%) scale(1);
-    }
-  }
-  @keyframes fade-scale {
-  0% {
-    opacity: 0;
-    transform: translateY(-50%) scale(0.95);
-    }
-  100% {
-    opacity: 1;
-    transform: translateY(-50%) scale(1);
-    }
-  }
-  @keyframes fade-scale {
-  0% {
-    opacity: 0;
-    transform: translateY(-50%) scale(0.95);
-    }
-  100% {
-    opacity: 1;
-    transform: translateY(-50%) scale(1);
-    }
-  }
-  @keyframes fade-scale {
-  0% {
-    opacity: 0;
-    transform: translateY(-50%) scale(0.95);
-    }
-  100% {
-    opacity: 1;
-    transform: translateY(-50%) scale(1);
-    }
-  }
-  @keyframes fade-scale {
-  0% {
-    opacity: 0;
-    transform: translateY(-50%) scale(0.95);
-    }
-  100% {
-    opacity: 1;
-    transform: translateY(-50%) scale(1);
-    }
-  }
-  --color-destructive-foreground: var(--destructive-foreground)
 }
 
 .dark {
@@ -347,6 +297,7 @@
   --accent: oklch(0.278 0.033 256.848);
   --accent-foreground: oklch(0.985 0.002 247.839);
   --destructive: oklch(0.704 0.191 22.216);
+  --destructive-foreground: oklch(1 0 0);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.551 0.027 264.364);
@@ -363,23 +314,4 @@
   --sidebar-accent-foreground: oklch(0.985 0.002 247.839);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.551 0.027 264.364);
-  --destructive-foreground: oklch(1 0 0);
-}
-
-@layer base {
-  * {
-    @apply border-border outline-ring/50;
-  }
-  body {
-    @apply text-foreground;
-  }
-}
-
-@layer base {
-  * {
-    @apply border-border outline-ring/50;
-  }
-  body {
-    @apply bg-background text-foreground;
-  }
 }

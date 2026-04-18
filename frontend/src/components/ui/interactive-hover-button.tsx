@@ -22,13 +22,22 @@ const InteractiveHoverButton = React.forwardRef<
   HTMLButtonElement,
   InteractiveHoverButtonProps
 >(({ text = "Login", className, ...props }, ref) => {
-  const { isSignedIn } = useUser();
+  const { isSignedIn, user } = useUser();
   const { openSignIn } = useClerk();
   const router = useRouter();
   const { verified, checking } = useUserStore();
 
+  // Logic to determine if user is admin
+  const adminEmail = process.env.NEXT_PUBLIC_ADMIN_EMAIL;
+  const userEmail = user?.primaryEmailAddress?.emailAddress;
+  const isAdmin = Boolean(adminEmail && userEmail === adminEmail);
+
   const handleClick = () => {
     if (isSignedIn) {
+      if (isAdmin) {
+        router.push('/admin');
+        return;
+      }
       if (checking) return; // wait for the check to finish
       if (verified) {
         router.push('/home');
@@ -44,13 +53,17 @@ const InteractiveHoverButton = React.forwardRef<
     }
   };
 
+
+
   // Label logic
   const label = isSignedIn
-    ? checking
-      ? '...'
-      : verified
-        ? 'Go to App'
-        : 'Verify'
+    ? isAdmin
+      ? 'Admin Dashboard'
+      : checking
+        ? '...'
+        : verified
+          ? 'Go to App'
+          : 'Verify'
     : text;
 
   return (
