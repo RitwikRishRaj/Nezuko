@@ -14,13 +14,14 @@ import {
 import { Footer } from '@/components/footer-section';
 import { InteractiveHoverButton } from "@/components/ui/interactive-hover-button";
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import MagicBento from "@/components/MagicBento";
 import { useUser, useClerk } from "@clerk/nextjs";
-import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useUserStore } from "@/lib/store";
 
 export default function LandingPage() {
+  const router = useRouter();
   const navItems = [
     { name: "Features", link: "#features" },
     { name: "Pricing", link: "#pricing" },
@@ -29,8 +30,8 @@ export default function LandingPage() {
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { isLoaded, isSignedIn, user } = useUser();
-  const { signOut, openSignIn } = useClerk();
-  const router = useRouter();
+  const clerk = useClerk();
+  const { signOut } = clerk;
   const { setVerified, setChecking } = useUserStore();
 
   // Check Supabase verified status once the user is loaded
@@ -40,28 +41,49 @@ export default function LandingPage() {
     setChecking(true);
     (async () => {
       try {
+        await fetch('/api/sync-user', { method: 'POST' });
+        
         const { data } = await supabase
           .from("users")
           .select("is_verified")
           .eq("clerk_id", user.id)
           .maybeSingle();
 
-        setVerified(!!data?.is_verified);
+        const verified = !!data?.is_verified;
+        setVerified(verified);
+        
+        // Auto-redirect unverified users to verify page
+        if (!verified) {
+          router.push('/verify');
+        }
       } catch {
         setVerified(false);
+      } finally {
+        setChecking(false);
       }
     })();
-  }, [isLoaded, isSignedIn, user, setVerified, setChecking]);
+  }, [isLoaded, isSignedIn, user, setVerified, setChecking, router]);
 
-  const handleMobileLogin = () => {
+  const handleMobileLogin = async () => {
     setIsMobileMenuOpen(false);
     if (isSignedIn) {
-      signOut(() => router.push('/'));
+      try {
+        await signOut(() => {
+          window.location.assign("/");
+        });
+      } catch (error) {
+        console.error("Failed to sign out", error);
+      }
     } else {
-      openSignIn({
-        forceRedirectUrl: '/',
-        fallbackRedirectUrl: '/'
-      });
+      if (!clerk.loaded) return;
+      try {
+        await clerk.openSignIn({
+          forceRedirectUrl: '/',
+          fallbackRedirectUrl: '/'
+        });
+      } catch (error) {
+        console.error("Failed to open Clerk sign-in", error);
+      }
     }
   };
 

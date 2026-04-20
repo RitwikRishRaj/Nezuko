@@ -30,9 +30,11 @@ async function fetchChallengeProblem(): Promise<Problem> {
 }
 
 async function checkVerification(handle: string, problem: Problem): Promise<boolean> {
-  const res = await fetch(
-    `${process.env.NEXT_PUBLIC_API_GATEWAY_URL}/api/verify`,
-    {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+    const res = await fetch('/api/verify-cf', {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -40,10 +42,26 @@ async function checkVerification(handle: string, problem: Problem): Promise<bool
         contestId: Number(problem.contest),
         index: problem.index,
       }),
+      signal: controller.signal,
+    });
+    
+    clearTimeout(timeoutId);
+    const data = await res.json() as { success?: boolean; error?: string };
+    
+    if (!res.ok) {
+      console.error('Verification failed:', data.error);
+      return false;
     }
-  );
-  const data = await res.json() as { success?: boolean };
-  return res.ok && !!data.success;
+    
+    return !!data.success;
+  } catch (error: any) {
+    if (error.name === 'AbortError') {
+      console.error('Request timeout');
+    } else {
+      console.error('Verification error:', error);
+    }
+    return false;
+  }
 }
 
 /* ─── tiny icon components ─── */
@@ -217,9 +235,16 @@ export default function VerifyPage() {
   const [inputError, setInputError] = useState<boolean>(false);
   const phaseRef = useRef<number>(0);
 
-  // Redirect unauthenticated users
   useEffect(() => {
-    if (isLoaded && !isSignedIn) router.push("/");
+    if (isLoaded && !isSignedIn) {
+      router.push("/");
+      return;
+    }
+    
+    if (isLoaded && isSignedIn) {
+      fetch('/api/sync-user', { method: 'POST' })
+        .catch(err => console.error('Sync failed:', err));
+    }
   }, [isLoaded, isSignedIn, router]);
 
   // Redirect to /home after success
@@ -267,17 +292,8 @@ export default function VerifyPage() {
     if (phaseRef.current !== myPhase) return;
 
     if (ok) {
-      // Persist to Supabase: upsert codeforces_handle + is_verified
+      // Verification successful - API already updated Supabase
       if (user) {
-        await supabase.from("users").upsert(
-          {
-            clerk_id: user.id,
-            codeforces_handle: handle.trim(),
-            is_verified: true,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "clerk_id" }
-        );
       }
       setVerified(true); // update Zustand so the landing button reflects it
     }

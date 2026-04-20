@@ -2,11 +2,12 @@
 import { cn } from "@/lib/utils";
 import { IconMenu2, IconX } from "@tabler/icons-react";
 import {
-  motion,
+  motion as _motion,
   AnimatePresence,
   useScroll,
   useMotionValueEvent,
 } from "framer-motion";
+const motion = _motion as any;
 import Image from "next/image";
 import Link from "next/link";
 import React, { useState } from "react";
@@ -54,7 +55,7 @@ export const Navbar = ({ children, className }: NavbarProps) => {
   const { scrollY } = useScroll();
   const [visible, setVisible] = useState<boolean>(false);
 
-  useMotionValueEvent(scrollY, "change", (latest) => {
+  useMotionValueEvent(scrollY, "change", (latest: number) => {
     if (latest > 100) {
       setVisible(true);
     } else {

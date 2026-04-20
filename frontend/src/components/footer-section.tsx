@@ -1,7 +1,8 @@
 'use client';
 import React from 'react';
 import type { ComponentProps, ReactNode } from 'react';
-import { motion, useReducedMotion } from 'framer-motion';
+import { motion as _motion, useReducedMotion } from 'framer-motion';
+const motion = _motion as any;
 //import { FacebookIcon, InstagramIcon, LinkedinIcon, YoutubeIcon } from 'lucide-react';
 import Image from 'next/image';
 

@@ -14,19 +14,25 @@ export default function AdminHomePage() {
   const [locked, setLocked] = useState(false);
 
   useEffect(() => {
-    if (isLoaded) {
-      if (!isSignedIn) {
-        router.replace("/");
-        return;
-      }
-      const adminEmail = process.env.NEXT_PUBLIC_ADMIN_EMAIL;
-      const userEmail = user?.primaryEmailAddress?.emailAddress;
-      
-      if (!adminEmail || userEmail !== adminEmail) {
-        router.replace("/home");
-      }
+    if (!isLoaded) return;
+    
+    if (!isSignedIn) {
+      router.replace("/");
+      return;
+    }
+    
+    const role = user?.publicMetadata?.role as string | undefined;
+    
+    if (role !== 'admin') {
+      router.replace("/home");
     }
   }, [isLoaded, isSignedIn, user, router]);
+
+  if (!isLoaded || !isSignedIn) return null;
+  
+  // Double-check admin role before rendering
+  const role = user?.publicMetadata?.role as string | undefined;
+  if (role !== 'admin') return null;
 
   const handleMouseEnter = useCallback(() => {
     if (!locked) setExpanded(true);

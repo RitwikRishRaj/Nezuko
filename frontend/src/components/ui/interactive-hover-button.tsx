@@ -23,16 +23,15 @@ const InteractiveHoverButton = React.forwardRef<
   InteractiveHoverButtonProps
 >(({ text = "Login", className, ...props }, ref) => {
   const { isSignedIn, user } = useUser();
-  const { openSignIn } = useClerk();
+  const clerk = useClerk();
   const router = useRouter();
   const { verified, checking } = useUserStore();
 
-  // Logic to determine if user is admin
-  const adminEmail = process.env.NEXT_PUBLIC_ADMIN_EMAIL;
-  const userEmail = user?.primaryEmailAddress?.emailAddress;
-  const isAdmin = Boolean(adminEmail && userEmail === adminEmail);
+  // Logic to determine if user is admin (from Clerk metadata)
+  const role = user?.publicMetadata?.role as string | undefined;
+  const isAdmin = role === 'admin';
 
-  const handleClick = () => {
+  const handleClick = async () => {
     if (isSignedIn) {
       if (isAdmin) {
         router.push('/admin');
@@ -46,10 +45,15 @@ const InteractiveHoverButton = React.forwardRef<
       }
     } else {
       // Redirect back to landing after sign-in; landing page runs the check
-      openSignIn({
-        forceRedirectUrl: '/',
-        fallbackRedirectUrl: '/',
-      });
+      if (!clerk.loaded) return;
+      try {
+        await clerk.openSignIn({
+          forceRedirectUrl: '/',
+          fallbackRedirectUrl: '/',
+        });
+      } catch (error) {
+        console.error("Failed to open Clerk sign-in", error);
+      }
     }
   };
 
